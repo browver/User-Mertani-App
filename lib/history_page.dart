@@ -12,12 +12,14 @@ class HistoryPage extends StatefulWidget {
 
 class _HistoryPageState extends State<HistoryPage> {
   String filter = 'all'; // 'all', 'weekly', 'monthly'
+  String searchQuery = '';
 
   String formatCurrency(num value) {
     final formatter = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0);
     return formatter.format(value);
   }
 
+// Weekly or Monthly Options 
   DateTime? getFilterDate() {
     final now = DateTime.now();
     if (filter == 'weekly') return now.subtract(const Duration(days: 7));
@@ -25,6 +27,7 @@ class _HistoryPageState extends State<HistoryPage> {
     return null;
   }
 
+// Delete alert UI
   Future<void> _confirmAndDeleteHistory() async {
     if (!mounted) return;
 
@@ -64,44 +67,65 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
+// Delete All History Button
   @override
   Widget build(BuildContext context) {
     final filterDate = getFilterDate();
 
     return Scaffold(
-      backgroundColor: Colors.purple[50],
+      backgroundColor: Colors.grey[200],
       appBar: AppBar(
-        backgroundColor: Colors.purple[100],
+        backgroundColor: Colors.orange[500],
         centerTitle: true,
         title: Text('Transaction History', style: GoogleFonts.alexandria()),
         actions: [
           IconButton(
-            icon: const Icon(Icons.delete, color: Colors.red),
+            icon: Icon(Icons.delete, color: Colors.red[600]),
             tooltip: "Delete all history",
             onPressed: _confirmAndDeleteHistory,
           ),
         ],
       ),
+
+      // Search Products History
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Row(
+            child: Column( 
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Filter:  "),
-                DropdownButton<String>(
-                  value: filter,
-                  items: const [
-                    DropdownMenuItem(value: 'all', child: Text("All")),
-                    DropdownMenuItem(value: 'weekly', child: Text("Weekly")),
-                    DropdownMenuItem(value: 'monthly', child: Text("Monthly")),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) setState(() => filter = value);
+                TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Product name..',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), 
+                  ),
+                  onChanged: (value) { 
+                    setState(() {
+                      searchQuery = value.toLowerCase();
+                    });
                   },
                 ),
+                const SizedBox(height: 12), 
+                Row(
+                  children: [
+                    const Text("Filter:  "),
+                    DropdownButton<String>(
+                      value: filter,
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text("All")),
+                        DropdownMenuItem(value: 'weekly', child: Text("Weekly")),
+                        DropdownMenuItem(value: 'monthly', child: Text("Monthly")),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) setState(() => filter = value);
+                      },
+                    ),
+                  ],
+                ),
               ],
-            ),
+            ), 
           ),
           Expanded(
             child: StreamBuilder(
@@ -111,13 +135,26 @@ class _HistoryPageState extends State<HistoryPage> {
                   .snapshots(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-
+                // Search Filter change
                 final allDocs = snapshot.data!.docs;
-                final filteredDocs = filterDate == null
-                    ? allDocs
-                    : allDocs.where((doc) {
+                final filteredDocs = allDocs.where((doc) {
+                        final data = doc.data();
                         final ts = (doc['timestamp'] as Timestamp).toDate();
-                        return ts.isAfter(filterDate);
+                        final productName = (data['items'] ?? '').toString().toLowerCase();
+                        final rawAction = (data['action'] ?? '').toString().toLowerCase();
+                        final actionType = rawAction == 'delete'
+                            ? 'sold'
+                            :rawAction == 'add'
+                                ?'added'
+                                :'updated';
+                        final dateFormatted = DateFormat('dd MMM yyyy - HH:mm').format(ts).toLowerCase();
+
+                        final matchesSearch = productName.contains(searchQuery) ||
+                            actionType.contains(searchQuery) ||
+                            dateFormatted.contains(searchQuery);
+
+                        final matchesFilter = filterDate == null || ts.isAfter(filterDate);
+                        return matchesSearch && matchesFilter;
                       }).toList();
 
                 if (filteredDocs.isEmpty) {
@@ -143,7 +180,7 @@ class _HistoryPageState extends State<HistoryPage> {
                         itemCount: filteredDocs.length,
                         itemBuilder: (context, index) {
                           final data = filteredDocs[index].data();
-                          final product = data['product'] ?? '';
+                          final product = data['items'] ?? '';
                           final action = data['action'] ?? '';
                           final quantity = data['quantity'] ?? 0;
                           final totalPrice = data['total_price'];
@@ -155,13 +192,14 @@ class _HistoryPageState extends State<HistoryPage> {
                                   ? 'added'
                                   : 'updated';
 
+                          // Total Price
                           return Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                             child: ListTile(
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              tileColor: Colors.purple[100],
+                              tileColor: Colors.white,
                               title: Text(product, style: GoogleFonts.alexandria(fontSize: 18, fontWeight: FontWeight.bold)),
                               subtitle: Text(
                                 "$actionText - $quantity unit\n"

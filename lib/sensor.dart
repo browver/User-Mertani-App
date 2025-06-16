@@ -13,16 +13,16 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 
-class HomePage extends StatefulWidget {
+class SensorPage extends StatefulWidget {
   final bool openAddForm;
   
-  const HomePage({super.key, this.openAddForm = false});
+  const SensorPage({super.key, this.openAddForm = false});
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  State<SensorPage> createState() => _SensorPageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _SensorPageState extends State<SensorPage> {
   TextEditingController controller = TextEditingController();
   TextEditingController quantityController = TextEditingController();
   TextEditingController priceController = TextEditingController();
@@ -39,12 +39,12 @@ class _HomePageState extends State<HomePage> {
 Future<void> exportToPDF() async {
   try {
     final pdfDoc = pw.Document();
-    final snapshot = await FirebaseFirestore.instance.collection('components').get();
-    final components = snapshot.docs;
+    final snapshot = await FirebaseFirestore.instance.collection('sensors').get();
+    final sensors = snapshot.docs;
 
     if (!mounted) return;
 
-    if (components.isEmpty) {
+    if (sensors.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Tidak ada produk untuk diekspor.")),
       );
@@ -57,14 +57,14 @@ Future<void> exportToPDF() async {
         build: (pw.Context context) {
           return [
             pw.Center(
-              child: pw.Text("Component List", style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+              child: pw.Text("Sensors List", style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
             ),
             pw.SizedBox(height: 20),
             pw.TableHelper.fromTextArray(
-              headers: ['Component', 'Quantity', 'Price'],
-              data: components.map((doc) {
+              headers: ['Sensor', 'Quantity', 'Price'],
+              data: sensors.map((doc) {
                 final data = doc.data();
-                final name = data['component'] ?? '';
+                final name = data['sensor'] ?? '';
                 final qty = data['quantity']?.toString() ?? '0';
                 final price = (data['price'] != null)
                     ? NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ').format(data['price'])
@@ -77,7 +77,7 @@ Future<void> exportToPDF() async {
       ),
     );
 
-    await Printing.sharePdf(bytes: await pdfDoc.save(), filename: 'components.pdf');
+    await Printing.sharePdf(bytes: await pdfDoc.save(), filename: 'sensors.pdf');
   } catch (e) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -86,8 +86,8 @@ Future<void> exportToPDF() async {
   }
 }
 
-  // UI Tampilan Components
-  void showComponentsBox(String? textToedit, String? docId, Timestamp? time) {
+  // UI Tampilan Sensors
+  void showSensorsBox(String? textToedit, String? docId, Timestamp? time) {
     showDialog(
       context: context,
       builder: (context) {
@@ -95,7 +95,7 @@ Future<void> exportToPDF() async {
           controller.text = textToedit;
         }
         if (docId != null) {
-          FirebaseFirestore.instance.collection('components').doc(docId).get().then((doc) {
+          FirebaseFirestore.instance.collection('sensors').doc(docId).get().then((doc) {
             final data = doc.data();
             if (data != null) {
               skuController.text = data['sku'] ?? ''; 
@@ -106,14 +106,14 @@ Future<void> exportToPDF() async {
         }
         return AlertDialog(
           title: Text(
-            "Add component",
+            "Add sensor",
             style: GoogleFonts.alexandria(fontSize: 16),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
-                decoration: InputDecoration(hintText: 'Nama Component...'),
+                decoration: InputDecoration(hintText: 'Nama Barang...'),
                 style: GoogleFonts.alexandria(),
                 controller: controller,
               ),
@@ -149,7 +149,7 @@ Future<void> exportToPDF() async {
             ],
           ),
 
-          // Add Component
+          // Add Sensor
           actions: [
             ElevatedButton(
               onPressed: () {
@@ -174,16 +174,16 @@ Future<void> exportToPDF() async {
                   } else {
                     firestoreServices.updateSensors(docId, item, quantity, price, sku, selectedCategory, time!);
                   }
-          // Update Component
+          // Update Sensor
                 } else {
-                  final component = controller.text.trim();
+                  final sensor = controller.text.trim();
                   final quantity = int.tryParse(quantityController.text.trim()) ?? 0;
                   final rawPrice = priceController.text.trim();
                   final normalizedPrice = rawPrice.replaceAll('.', '').replaceAll(',', '.');
                   final price = double.tryParse(normalizedPrice) ?? 0.0;
                   final sku = skuController.text.trim();
                   
-                  firestoreServices.updateComponents(docId, component, quantity, price, sku, selectedCategory, time!);
+                  firestoreServices.updateSensors(docId, sensor, quantity, price, sku, selectedCategory, time!);
                 }
                 controller.clear();
                 quantityController.clear();
@@ -208,7 +208,7 @@ Future<void> exportToPDF() async {
 
     if (widget.openAddForm) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        showComponentsBox(null, null, null);
+        showSensorsBox(null, null, null);
       });
     }
   }
@@ -221,7 +221,7 @@ Future<void> exportToPDF() async {
         centerTitle: true,
         backgroundColor: Colors.orange[500],
         title: Text(
-          "Components",
+          "Sensors",
           style: GoogleFonts.alexandria(
             color: Colors.white
           ),
@@ -246,7 +246,7 @@ Future<void> exportToPDF() async {
         backgroundColor: Colors.orange[500],
         child: Icon(Icons.add, color: Colors.white),
         onPressed: () async {
-          showComponentsBox(null, null, null);
+          showSensorsBox(null, null, null);
         },
       ),
 
@@ -258,7 +258,7 @@ Future<void> exportToPDF() async {
       child: TextField(
         controller: searchController,
         decoration: InputDecoration(
-          hintText: 'Search components name...',
+          hintText: 'Search sensor name...',
           prefixIcon: Icon(Icons.search),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -292,18 +292,18 @@ Future<void> exportToPDF() async {
       
 
             Expanded(
-              // Show Components
+              // Show Sensors
               child: StreamBuilder(
-                stream: FirestoreServices().showComponents(),
+                stream: FirestoreServices().showSensors(),
                 builder: (context, snapshot) {
                   if (snapshot.hasData) {
-                    List componentList= snapshot.data!.docs;
+                    List sensorList = snapshot.data!.docs;
 
-                  //Filter component search + category
+                  //Filter sensor search + category
                   if (searchText.isNotEmpty) {
-                    componentList = componentList.where((doc) {
+                    sensorList = sensorList.where((doc) {
                       final data = doc.data() as Map<String, dynamic>;
-                      final name = data['component'].toString().toLowerCase();
+                      final name = data['sensor'].toString().toLowerCase();
                       final category = data['category']?.toString().toLowerCase() ?? '';
                       final matchesSearch = searchText.isEmpty || name.contains(searchText);
                       final matchesCategory = selectedFilterCategory == null || category == selectedFilterCategory;
@@ -313,13 +313,13 @@ Future<void> exportToPDF() async {
 
             // ListTile
             return ListView.builder(
-              itemCount: componentList.length,
+              itemCount: sensorList.length,
               itemBuilder: (context, index) {
-                DocumentSnapshot document = componentList[index];
+                DocumentSnapshot document = sensorList[index];
                 String docId = document.id;
                 Map<String, dynamic> data =
                     document.data() as Map<String, dynamic>;
-                String component = data['component']?.toString()?? 'No Name';
+                String sensor = data['sensor']?.toString()?? 'No Name';
                 String sku = data['sku']?.toString()?? 'No SKU';
                 String selectedCategory = data['category']?.toString()?? 'No category';
                 int quantity = data['quantity'] ?? 0;
@@ -338,7 +338,7 @@ Future<void> exportToPDF() async {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              component,
+                              sensor,
                               style: GoogleFonts.alexandria(
                                 textStyle: TextStyle(
                                   color: Colors.black, fontSize: 19, fontWeight: FontWeight.bold
@@ -377,12 +377,12 @@ Future<void> exportToPDF() async {
                                   color: Colors.orange[500],
                                   icon: Icon(Icons.edit),
                                   onPressed: () {
-                                    showComponentsBox(component, docId, time);
+                                    showSensorsBox(sensor, docId, time);
                                   },
                                 ),
 
 
-                                // Sell component
+                                // Delete sensor
                                 IconButton(
                                     color: Colors.orange[500],
                                     onPressed: () {
@@ -412,12 +412,12 @@ Future<void> exportToPDF() async {
                                                   final totalPrice = qtytoDelete * price;
 
                                                   if (newQty > 0) {
-                                                    firestoreServices.updateComponents(docId, component, newQty, price, sku, selectedCategory, time);
+                                                    firestoreServices.updateSensors(docId, sensor, newQty, price, sku, selectedCategory, time);
                                                   } else {
-                                                    firestoreServices.deleteComponent(docId);
+                                                    firestoreServices.deleteSensor(docId);
                                                   }
 
-                                                  firestoreServices.addHistory(component, 'delete', qtytoDelete, sku, selectedCategory, totalPrice: totalPrice);
+                                                  firestoreServices.addHistory(sensor, 'delete', qtytoDelete, sku, selectedCategory, totalPrice: totalPrice);
                                                   Navigator.pop(context);
                                                 } 
                                               },
@@ -441,7 +441,7 @@ Future<void> exportToPDF() async {
             );
           } else {
             return Center(
-              child: Text("Nothing to show...add components"),
+              child: Text("Nothing to show...add sensors"),
             );
           }
         },
