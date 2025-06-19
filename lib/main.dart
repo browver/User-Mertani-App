@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_application_2/category_page.dart';
 import 'package:flutter_application_2/firebase_options.dart';
 // import 'package:flutter_application_2/menu_dashboard.dart';
 import 'package:flutter_application_2/login_page.dart';
@@ -32,6 +33,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/login': (context) => const LoginPage(),
         '/homepage': (context) => const MyHomePage(),
+        '/category' : (context) => const CategoryPage(),
       },
 
 

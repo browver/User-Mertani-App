@@ -1,11 +1,15 @@
-import 'package:flutter/cupertino.dart';
+// import 'package:flutter/cupertino.dart';
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 // import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_application_2/homepage.dart';
-import 'package:flutter_application_2/logger.dart';
-import 'package:flutter_application_2/sensor.dart';
+// import 'package:flutter_application_2/logger.dart';
+// import 'package:flutter_application_2/product_by_category.dart';
+// import 'package:flutter_application_2/sensor.dart';
 import 'package:flutter_application_2/history_page.dart';
 import 'package:flutter_application_2/firebase_services.dart';
+import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 // import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -31,6 +35,12 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+// define category
+  List<String> categories = [];
+  String? selectedFilterCategory;
+  String selectedCategory = '';
+
+
   Future<void> _logout() async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.remove('isLoggedIn'); 
@@ -39,13 +49,27 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
 
+  @override
+  void initState() {
+    super.initState();
+    FirestoreServices().getCategories().listen((catList) {
+      setState(() {
+        categories = catList.map((cat) => cat.name).toList();
+        categoryIcons = {for (var cat in catList) cat.name: cat.icon};
+      });
+    });
+  }
+
+  Map<String, IconData> categoryIcons = {};
+
+
 // Fungsi pemanggilan add
   void showAddProductDialog(BuildContext context) {
   final TextEditingController controller = TextEditingController();
   final TextEditingController quantityController = TextEditingController();
   final TextEditingController priceController = TextEditingController();
   final TextEditingController skuController = TextEditingController();
-  String selectedCategory = 'component';
+  String selectedCategory = categories.isNotEmpty ? categories.first: '';
   final firestoreServices = FirestoreServices();
   
     showDialog(
@@ -74,9 +98,11 @@ class _MyHomePageState extends State<MyHomePage> {
                 keyboardType: TextInputType.number,
                 controller: priceController,
               ),
+              
+  // Dropdown Kategori
               DropdownButtonFormField<String>(
-                value: selectedCategory,
-                items: ['sensor', 'logger', 'component']
+                value: categories.contains(selectedCategory)? selectedCategory: null,
+                items: categories
                     .map((cat) => DropdownMenuItem(value: cat, child: Text(cat.toUpperCase())))
                     .toList(),
                 onChanged: (value) {
@@ -102,13 +128,7 @@ class _MyHomePageState extends State<MyHomePage> {
               final sku = skuController.text.trim();
 
               if (product.isNotEmpty && sku.isNotEmpty) {
-                if (selectedCategory == 'sensor') {
-                  await firestoreServices.addSensor(product, quantity, price, sku, selectedCategory);
-                } else if (selectedCategory == 'logger') {
-                  await firestoreServices.addLogger(product, quantity, price, sku, selectedCategory);
-                } else {
-                  await firestoreServices.addComponent(product, quantity, price, sku, selectedCategory);
-                }
+                await firestoreServices.addProduct(product, quantity, price, sku, selectedCategory);
               }
 
               if (context.mounted) {
@@ -251,6 +271,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             
             // Grid Section
+          if (categories.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: GridView.count(
@@ -261,43 +282,56 @@ class _MyHomePageState extends State<MyHomePage> {
                 mainAxisSpacing: 8,
                 childAspectRatio: 1.0,
                 children: [
-                  _buildGridItem(
-                    context,
-                    'Sensor',
-                    Icons.sensors,
-                    const Color(0xFFFF8C00),
+                  // _buildGridItem(
+                  //   context,
+                  //   'Sensor',
+                  //   Icons.memory,
+                  //   const Color(0xFFFF8C00),
+                  //   () {
+                  //     Navigator.push(
+                  //       context,
+                  //       MaterialPageRoute(builder: (context) => const HomePage())
+                  //     );
+                  //   },
+                  // ),
+                  // _buildGridItem(
+                  //   context,
+                  //   'Logger',
+                  //   Icons.memory,
+                  //   const Color(0xFFFF8C00),
+                  //   () {
+                  //     Navigator.push(
+                  //       context,
+                  //       MaterialPageRoute(builder: (context) => const HomePage())
+                  //     );
+                  //   },
+                  // ),
+                  // _buildGridItem(
+                  //   context,
+                  //   'Component',
+                  //   Icons.category,
+                  //   const Color(0xFFFF8C00),
+                  //   () {
+                  //     Navigator.push(
+                  //       context,
+                  //       MaterialPageRoute(builder: (context) => const HomePage())
+                  //     );
+                  //   },
+                  // ),
+                // dynamic category the final
+                ...categories.map((cat) {
+                  final icon = categoryIcons[cat] ?? Icons.category;
+                  return _buildGridItem(
+                    context, cat, 
+                    icon, Color(0xFFFF8C00),
                     () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const SensorPage())
-                      );
-                    },
-                  ),
-                  _buildGridItem(
-                    context,
-                    'Logger',
-                    Icons.memory,
-                    const Color(0xFFFF8C00),
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const LoggerPage())
-                      );
-                    },
-                  ),
-                  _buildGridItem(
-                    context,
-                    'Component',
-                    Icons.category,
-                    const Color(0xFFFF8C00),
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const HomePage())
-                      );
-                    },
-                  ),
-                  _buildGridItem(
+                      Navigator.push(context, 
+                      MaterialPageRoute(builder: (_) => HomePage(selectedCategoryFromOutside: cat)));
+                    }
+                  );
+                }),
+                // History + Borrow
+                _buildGridItem(
                     context,
                     'History',
                     Icons.history,
@@ -309,7 +343,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       );
                     },
                   ),
-                  _buildGridItem(
+                _buildGridItem(
                     context,
                     'Borrowed',
                     Icons.people_outline,
@@ -319,44 +353,38 @@ class _MyHomePageState extends State<MyHomePage> {
                 ],
               ),
             ),
-            
             const SizedBox(height: 100), // Space for FAB
           ],
         ),
       ),
-      
-      floatingActionButton: Container(
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFF8C00), Color(0xFFFF7700)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+          floatingActionButton: SpeedDial(
+            icon: Icons.add,
+            activeIcon: Icons.close,
+            backgroundColor: const Color(0xFFFF8C00),
+            foregroundColor: Colors.white,
+            overlayOpacity: 0.4,
+            children: [
+              SpeedDialChild(
+                child: const Icon(Icons.category),
+                label: 'Tambah Kategori',
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+                onTap: () {
+                  Navigator.pushNamed(context, '/category');
+                },
+              ),
+              SpeedDialChild(
+                child: const Icon(Icons.add_box),
+                label: 'Tambah Produk',
+                foregroundColor: Colors.white,
+                backgroundColor: Colors.orange,
+                onTap: () {
+                  showAddProductDialog(context);
+                },
+              ),
+            ],
           ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFFF8C00).withOpacity(0.4),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: FloatingActionButton(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          onPressed: () {
-            showAddProductDialog(context);
-          },
-          child: const Icon(
-            Icons.add,
-            color: Colors.white,
-            size: 28,
-          ),
-        ),
-      ),
-    );
+        );
   }
 
   Widget _buildGridItem(

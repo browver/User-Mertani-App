@@ -15,8 +15,9 @@ import 'package:printing/printing.dart';
 
 class HomePage extends StatefulWidget {
   final bool openAddForm;
+  final String? selectedCategoryFromOutside;
   
-  const HomePage({super.key, this.openAddForm = false});
+  const HomePage({super.key, this.openAddForm = false, this.selectedCategoryFromOutside});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -31,20 +32,22 @@ class _HomePageState extends State<HomePage> {
 
   String searchText = '';
   String? selectedFilterCategory;
-  String selectedCategory = 'sensor';
+  String selectedCategory = '';
 
   FirestoreServices firestoreServices = FirestoreServices();
+
+  List<String> categories = [];
 
 // Export PDF
 Future<void> exportToPDF() async {
   try {
     final pdfDoc = pw.Document();
-    final snapshot = await FirebaseFirestore.instance.collection('components').get();
-    final components = snapshot.docs;
+    final snapshot = await FirebaseFirestore.instance.collection('products').get();
+    final products = snapshot.docs;
 
     if (!mounted) return;
 
-    if (components.isEmpty) {
+    if (products.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Tidak ada produk untuk diekspor.")),
       );
@@ -57,14 +60,14 @@ Future<void> exportToPDF() async {
         build: (pw.Context context) {
           return [
             pw.Center(
-              child: pw.Text("Component List", style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+              child: pw.Text("Products List", style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
             ),
             pw.SizedBox(height: 20),
             pw.TableHelper.fromTextArray(
-              headers: ['Component', 'Quantity', 'Price'],
-              data: components.map((doc) {
+              headers: ['Product', 'Quantity', 'Price'],
+              data: products.map((doc) {
                 final data = doc.data();
-                final name = data['component'] ?? '';
+                final name = data['product'] ?? '';
                 final qty = data['quantity']?.toString() ?? '0';
                 final price = (data['price'] != null)
                     ? NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ').format(data['price'])
@@ -77,7 +80,7 @@ Future<void> exportToPDF() async {
       ),
     );
 
-    await Printing.sharePdf(bytes: await pdfDoc.save(), filename: 'components.pdf');
+    await Printing.sharePdf(bytes: await pdfDoc.save(), filename: 'products.pdf');
   } catch (e) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -86,8 +89,8 @@ Future<void> exportToPDF() async {
   }
 }
 
-  // UI Tampilan Components
-  void showComponentsBox(String? textToedit, String? docId, Timestamp? time) {
+  // UI Tampilan Products
+  void showProductsBox(String? textToedit, String? docId, Timestamp? time) {
     showDialog(
       context: context,
       builder: (context) {
@@ -95,25 +98,26 @@ Future<void> exportToPDF() async {
           controller.text = textToedit;
         }
         if (docId != null) {
-          FirebaseFirestore.instance.collection('components').doc(docId).get().then((doc) {
+          FirebaseFirestore.instance.collection('products').doc(docId).get().then((doc) {
             final data = doc.data();
             if (data != null) {
               skuController.text = data['sku'] ?? ''; 
               quantityController.text = data['quantity']?.toString() ?? ''; 
               priceController.text = data['price']?.toString() ?? ''; 
+              selectedCategory = data['category'] ?? selectedCategory;
             }
           });
         }
         return AlertDialog(
           title: Text(
-            "Add component",
+            "Add product",
             style: GoogleFonts.alexandria(fontSize: 16),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
-                decoration: InputDecoration(hintText: 'Nama Component...'),
+                decoration: InputDecoration(hintText: 'Nama Barang...'),
                 style: GoogleFonts.alexandria(),
                 controller: controller,
               ),
@@ -135,8 +139,8 @@ Future<void> exportToPDF() async {
 
               // Dropdown Category
               DropdownButtonFormField<String>(
-                value: selectedCategory,
-                items: ['sensor', 'logger', 'component']
+                value: categories.contains(selectedCategory)? selectedCategory: null,
+                items: categories
                   .map((cat) => DropdownMenuItem(value: cat, child: Text(cat.toUpperCase())))
                   .toList(),
                 onChanged: (value) {
@@ -149,12 +153,12 @@ Future<void> exportToPDF() async {
             ],
           ),
 
-          // Add Component
+          // Add Product
           actions: [
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 if (docId == null) {
-                  final item = controller.text.trim();
+                  final name = controller.text.trim();
                   final quantity = int.tryParse(quantityController.text.trim()) ?? 0;
                   final rawPrice = priceController.text.trim();
                   final normalizedPrice = rawPrice.replaceAll('.', '').replaceAll(',', '.');
@@ -162,33 +166,27 @@ Future<void> exportToPDF() async {
                   final sku = skuController.text.trim();
 
                   if (docId == null) {
-                    if (selectedCategory == 'sensor') {
-                      firestoreServices.addSensor(item, quantity, price, sku, selectedCategory);
-                    }
-                    if (selectedCategory == 'logger') {
-                      firestoreServices.addLogger(item, quantity, price, sku, selectedCategory);
-                    }
-                    if (selectedCategory == 'component') {
-                      firestoreServices.addComponent(item, quantity, price, sku, selectedCategory);
-                    }
+                    await firestoreServices.addProduct(name, quantity, price, sku, selectedCategory);
                   } else {
-                    firestoreServices.updateSensors(docId, item, quantity, price, sku, selectedCategory, time!);
+                    await firestoreServices.updateProducts(docId, name, quantity, price, sku, selectedCategory, time!);
                   }
-          // Update Component
+          // Update Product
                 } else {
-                  final component = controller.text.trim();
+                  final product = controller.text.trim();
                   final quantity = int.tryParse(quantityController.text.trim()) ?? 0;
                   final rawPrice = priceController.text.trim();
                   final normalizedPrice = rawPrice.replaceAll('.', '').replaceAll(',', '.');
                   final price = double.tryParse(normalizedPrice) ?? 0.0;
                   final sku = skuController.text.trim();
                   
-                  firestoreServices.updateComponents(docId, component, quantity, price, sku, selectedCategory, time!);
+                  firestoreServices.updateProducts(docId, product, quantity, price, sku, selectedCategory, time!);
                 }
                 controller.clear();
                 quantityController.clear();
                 priceController.clear();
                 skuController.clear();
+
+                if(!mounted) return;
                 Navigator.pop(context);
               },
               child: Text(
@@ -206,9 +204,21 @@ Future<void> exportToPDF() async {
   void initState() {
     super.initState();
 
+    firestoreServices.getCategories().listen((catList) {
+      setState(() {
+        categories = catList.map((cat) => cat.name).toList();
+
+        if (widget.selectedCategoryFromOutside !=null && categories.contains(widget.selectedCategoryFromOutside)) {
+          selectedFilterCategory = widget.selectedCategoryFromOutside!;
+        }
+      });
+    });
+
+    firestoreServices.seedDefaultCategories();
+
     if (widget.openAddForm) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        showComponentsBox(null, null, null);
+        showProductsBox(null, null, null);
       });
     }
   }
@@ -221,7 +231,7 @@ Future<void> exportToPDF() async {
         centerTitle: true,
         backgroundColor: Colors.orange[500],
         title: Text(
-          "Components",
+          "Products",
           style: GoogleFonts.alexandria(
             color: Colors.white
           ),
@@ -246,7 +256,7 @@ Future<void> exportToPDF() async {
         backgroundColor: Colors.orange[500],
         child: Icon(Icons.add, color: Colors.white),
         onPressed: () async {
-          showComponentsBox(null, null, null);
+          showProductsBox(null, null, null);
         },
       ),
 
@@ -258,7 +268,7 @@ Future<void> exportToPDF() async {
       child: TextField(
         controller: searchController,
         decoration: InputDecoration(
-          hintText: 'Search components name...',
+          hintText: 'Search products name...',
           prefixIcon: Icon(Icons.search),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -279,7 +289,7 @@ Future<void> exportToPDF() async {
         isExpanded: true,
         hint: Text('Filter by Category'),
         value: selectedFilterCategory,
-        items: ['sensor', 'logger', 'component']
+        items: categories
             .map((cat) => DropdownMenuItem(value: cat, child: Text(cat.toUpperCase())))
             .toList(),
           onChanged: (value) {
@@ -292,34 +302,32 @@ Future<void> exportToPDF() async {
       
 
             Expanded(
-              // Show Components
+              // Show Products
               child: StreamBuilder(
-                stream: FirestoreServices().showComponents(),
+                stream: FirestoreServices().showProducts(),
                 builder: (context, snapshot) {
                   if (snapshot.hasData) {
-                    List componentList= snapshot.data!.docs;
+                    List productList= snapshot.data!.docs;
 
-                  //Filter component search + category
-                  if (searchText.isNotEmpty) {
-                    componentList = componentList.where((doc) {
+                  //Filter product search + category
+                    productList = productList.where((doc) {
                       final data = doc.data() as Map<String, dynamic>;
-                      final name = data['component'].toString().toLowerCase();
+                      final name = data['product'].toString().toLowerCase();
                       final category = data['category']?.toString().toLowerCase() ?? '';
                       final matchesSearch = searchText.isEmpty || name.contains(searchText);
-                      final matchesCategory = selectedFilterCategory == null || category == selectedFilterCategory;
+                      final matchesCategory = selectedFilterCategory == null || category == selectedFilterCategory!.toLowerCase();
                       return matchesSearch && matchesCategory;
                     }).toList();
-                  }
 
             // ListTile
             return ListView.builder(
-              itemCount: componentList.length,
+              itemCount: productList.length,
               itemBuilder: (context, index) {
-                DocumentSnapshot document = componentList[index];
+                DocumentSnapshot document = productList[index];
                 String docId = document.id;
                 Map<String, dynamic> data =
                     document.data() as Map<String, dynamic>;
-                String component = data['component']?.toString()?? 'No Name';
+                String product = data['product']?.toString()?? 'No Name';
                 String sku = data['sku']?.toString()?? 'No SKU';
                 String selectedCategory = data['category']?.toString()?? 'No category';
                 int quantity = data['quantity'] ?? 0;
@@ -338,7 +346,7 @@ Future<void> exportToPDF() async {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              component,
+                              product,
                               style: GoogleFonts.alexandria(
                                 textStyle: TextStyle(
                                   color: Colors.black, fontSize: 19, fontWeight: FontWeight.bold
@@ -377,12 +385,12 @@ Future<void> exportToPDF() async {
                                   color: Colors.orange[500],
                                   icon: Icon(Icons.edit),
                                   onPressed: () {
-                                    showComponentsBox(component, docId, time);
+                                    showProductsBox(product, docId, time);
                                   },
                                 ),
 
 
-                                // Sell component
+                                // Sell product
                                 IconButton(
                                     color: Colors.orange[500],
                                     onPressed: () {
@@ -412,12 +420,12 @@ Future<void> exportToPDF() async {
                                                   final totalPrice = qtytoDelete * price;
 
                                                   if (newQty > 0) {
-                                                    firestoreServices.updateComponents(docId, component, newQty, price, sku, selectedCategory, time);
+                                                    firestoreServices.updateProducts(docId, product, newQty, price, sku, selectedCategory, time);
                                                   } else {
-                                                    firestoreServices.deleteComponent(docId);
+                                                    firestoreServices.deleteProduct(docId);
                                                   }
 
-                                                  firestoreServices.addHistory(component, 'delete', qtytoDelete, sku, selectedCategory, totalPrice: totalPrice);
+                                                  firestoreServices.addHistory(product, 'delete', qtytoDelete, sku, selectedCategory, totalPrice: totalPrice);
                                                   Navigator.pop(context);
                                                 } 
                                               },
@@ -441,7 +449,7 @@ Future<void> exportToPDF() async {
             );
           } else {
             return Center(
-              child: Text("Nothing to show...add components"),
+              child: Text("Nothing to show...add products"),
             );
           }
         },

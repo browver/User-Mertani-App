@@ -3,8 +3,15 @@
 // import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+// import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_application_2/category_model.dart';
 
 class FirestoreServices {
+  final CollectionReference? categories =
+    FirebaseFirestore.instance.collection('categories');
+  final CollectionReference? products =
+    FirebaseFirestore.instance.collection('products');
   final CollectionReference? components =
     FirebaseFirestore.instance.collection('components');
   final CollectionReference? sensors =
@@ -12,21 +19,76 @@ class FirestoreServices {
   final CollectionReference? loggers =
     FirebaseFirestore.instance.collection('loggers');
 
-  // adding Component
-  Future<void> addComponent(String component, int quantity, double price, String sku, String category) async{
-    await components!.add({
-      'component':component,
+
+  // Category default seeder
+  Future<void> seedDefaultCategories() async {
+    final existing = await categories!.get();
+    if (existing.docs.isEmpty) {
+      await addCategory('sensor', Icons.sensors.codePoint);
+      await addCategory('logger', Icons.developer_board.codePoint);
+      await addCategory('component', Icons.memory.codePoint);
+    }
+  }
+
+  // adding Category
+  Future<void> addCategory(String name, int iconCode) async {
+    await categories!.doc(name).set({
+      'name' : name,
+      'icon' : iconCode,
+    });
+  }
+  
+  // takes all categories as a stream
+  Stream<List<CategoryModel>> getCategories() {
+    return categories!.snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return CategoryModel.fromMap({
+          'id': doc.id,
+          ...data,
+        });
+      }).toList();
+    });
+  }
+
+  // delete category by id
+  Future<void> deleteCategory(String docId) async {
+    await categories!.doc(docId).delete();
+  }
+
+  // delete all products in a category
+  Future<void> deleteCategoryWithProducts(String categoryName) async {
+    await categories!.doc(categoryName).delete();
+
+    final productsQuery = await products!
+        .where('category', isEqualTo: categoryName)
+        .get();
+
+    for (final doc in productsQuery.docs) {
+      await doc.reference.delete();
+    }
+  }
+
+  // adding Product
+  Future<void> addProduct(String name, int quantity, double price, String sku, String category) async{
+    final data = {
+      'product':name,
       'quantity': quantity,
       'price': price,
       'sku': sku,
-      'category': category,
-      
-      'timestamp': FieldValue.serverTimestamp()}
-      );
+      'category': category,  
+      'timestamp': FieldValue.serverTimestamp()
+    };
+    
+    // add to collections
+    await products!.add(data);
 
-    // adding to history
+    final categoryRef = FirebaseFirestore.instance.collection('categories').doc(category);
+    await categoryRef.collection('products').add(data);
+
+    // add to history
     await addHistory(
-      component,
+      name,
       'add',
       quantity,
       sku,
@@ -34,76 +96,26 @@ class FirestoreServices {
       totalPrice: quantity * price,
     );    
   }
-
-  // adding Sensor
-   Future<void> addSensor(String sensor, int quantity, double price, String sku, String category) async{
-    await sensors!.add({
-      'sensor':sensor,
-      'quantity': quantity,
-      'price': price,
-      'sku': sku,
-      'category': category,
-      
-      'timestamp': FieldValue.serverTimestamp()}
-      );
-
-    // adding to history
-    await addHistory(
-      sensor,
-      'add',
-      quantity,
-      sku,
-      category,
-      totalPrice: quantity * price,
-    );    
-  }
-
-    // adding Logger
-   Future<void> addLogger(String logger, int quantity, double price, String sku, String category) async{
-    await loggers!.add({
-      'logger':logger,
-      'quantity': quantity,
-      'price': price,
-      'sku': sku,
-      'category': category,
-      
-      'timestamp': FieldValue.serverTimestamp()}
-      );
-
-    // adding to history
-    await addHistory(
-      logger,
-      'add',
-      quantity,
-      sku,
-      category,
-      totalPrice: quantity * price,
-    );    
-  } 
 
   //read data
-  Stream<QuerySnapshot> showComponents() {
-    final componentsStream = components!.orderBy('timestamp', descending: true).snapshots();
-    return componentsStream;
+  Stream<QuerySnapshot> showProducts() {
+    final productsStream = products!.orderBy('timestamp', descending: true).snapshots();
+    return productsStream;
   }
 
-    //read data
-  Stream<QuerySnapshot> showSensors() {
-    final sensorsStream = sensors!.orderBy('timestamp', descending: true).snapshots();
-    return sensorsStream;
+  //read data by category
+  Stream<QuerySnapshot> getProductsByCategory(String categoryName) {
+    return FirebaseFirestore.instance
+        .collection('products')
+        .where('category', isEqualTo: categoryName)
+        .orderBy('timestamp', descending: true)
+        .snapshots();
   }
 
-    //read data
-  Stream<QuerySnapshot> showLoggers() {
-    final loggersStream = loggers!.orderBy('timestamp', descending: true).snapshots();
-    return loggersStream;
-  }
-
-
-  // update Component
-  Future<void> updateComponents(String docId, String newComponent, int quantity, double price, String sku, String category,Timestamp time) async{
-    await components!.doc(docId).update({
-      'component':newComponent,
+  // update Product
+  Future<void> updateProducts(String docId, String newProduct, int quantity, double price, String sku, String category,Timestamp time) async{
+    await products!.doc(docId).update({
+      'product':newProduct,
       'quantity':quantity,
       'price':price,
       'sku': sku,
@@ -111,7 +123,7 @@ class FirestoreServices {
       'timestamp': time});
 
       await addHistory(
-      newComponent,
+      newProduct,
       'update',
       quantity,
       sku,
@@ -120,126 +132,32 @@ class FirestoreServices {
     );
   }
 
-  // update Sensor
-  Future<void> updateSensors(String docId, String newSensor, int quantity, double price, String sku, String category,Timestamp time) async{
-    await sensors!.doc(docId).update({
-      'sensor':newSensor,
-      'quantity':quantity,
-      'price':price,
-      'sku': sku,
-      'category': category,
-      'timestamp': time});
+  // delete Product
+  Future<void> deleteProduct(String docId) async {
+    final docSnapshot = await products!.doc(docId).get();
+    final data = docSnapshot.data() as Map<String, dynamic>?;
+
+    if (data != null) {
+      final product = data['products'] ?? '';
+      final quantity = data['quantity'] ?? 0;
+      final price = data['price'] ?? 0.0;
+      final sku = data['sku'] ?? '';
+      final category = data['category'] ?? '';
+
 
       await addHistory(
-      newSensor,
-      'update',
-      quantity,
-      sku,
-      category,
-      totalPrice: quantity * price,
-    );
+        product,
+        'sold',
+        quantity,
+        sku,
+        category,
+        totalPrice: quantity * price,
+      );
+    }
+
+    // delete all products
+    await products!.doc(docId).delete();
   }
-
-    // update Logger
-  Future<void> updateLoggers(String docId, String newLogger, int quantity, double price, String sku, String category,Timestamp time) async{
-    await loggers!.doc(docId).update({
-      'logger':newLogger,
-      'quantity':quantity,
-      'price':price,
-      'sku': sku,
-      'category': category,
-      'timestamp': time});
-
-      await addHistory(
-      newLogger,
-      'update',
-      quantity,
-      sku,
-      category,
-      totalPrice: quantity * price,
-    );
-  }
-
-// delete Component
-Future<void> deleteComponent(String docId) async {
-  final docSnapshot = await components!.doc(docId).get();
-  final data = docSnapshot.data() as Map<String, dynamic>?;
-
-  if (data != null) {
-    final component = data['components'] ?? '';
-    final quantity = data['quantity'] ?? 0;
-    final price = data['price'] ?? 0.0;
-    final sku = data['sku'] ?? '';
-    final category = data['category'] ?? '';
-
-
-    await addHistory(
-      component,
-      'sold',
-      quantity,
-      sku,
-      category,
-      totalPrice: quantity * price,
-    );
-  }
-
-  // delete all components
-  await components!.doc(docId).delete();
-}
-
-// delete sensor
-Future<void> deleteSensor(String docId) async {
-  final docSnapshot = await sensors!.doc(docId).get();
-  final data = docSnapshot.data() as Map<String, dynamic>?;
-
-  if (data != null) {
-    final sensor = data['sensor'] ?? '';
-    final quantity = data['quantity'] ?? 0;
-    final price = data['price'] ?? 0.0;
-    final sku = data['sku'] ?? '';
-    final category = data['category'] ?? '';
-
-
-    await addHistory(
-      sensor,
-      'sold',
-      quantity,
-      sku,
-      category,
-      totalPrice: quantity * price,
-    );
-  }
-
-  // delete all sensors
-  await sensors!.doc(docId).delete();
-}
-
-// delete logger
-Future<void> deleteLogger(String docId) async {
-  final docSnapshot = await loggers!.doc(docId).get();
-  final data = docSnapshot.data() as Map<String, dynamic>?;
-
-  if (data != null) {
-    final logger = data['logger'] ?? '';
-    final quantity = data['quantity'] ?? 0;
-    final price = data['price'] ?? 0.0;
-    final sku = data['sku'] ?? '';
-    final category = data['category'] ?? '';
-
-
-    await addHistory(
-      logger,
-      'sold',
-      quantity,
-      sku,
-      category,
-      totalPrice: quantity * price,
-    );
-  }
-
-  // delete all
-  await loggers!.doc(docId).delete();
-}
 
   // History
   Future<void> addHistory(String items, String action ,int quantity, String sku, String category,{double? totalPrice}) async {
@@ -254,14 +172,13 @@ Future<void> deleteLogger(String docId) async {
     });
   }
 
-// Delete History
+  // Delete History
   Future<void> deleteAllHistory() async {
-  final historyCollection = FirebaseFirestore.instance.collection('history');
+    final historyCollection = FirebaseFirestore.instance.collection('history');
 
-  final snapshots = await historyCollection.get();
-  for (var doc in snapshots.docs) {
-    await doc.reference.delete();
+    final snapshots = await historyCollection.get();
+    for (var doc in snapshots.docs) {
+      await doc.reference.delete();
+    }
   }
-}
-
 }
