@@ -15,8 +15,8 @@ class _HistoryPageState extends State<HistoryPage> {
   String searchQuery = '';
 
   String formatCurrency(num value) {
-    final formatter = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0);
-    return formatter.format(value);
+    final formatter = NumberFormat.currency(locale: 'id_ID', symbol: '', decimalDigits: 0);
+    return 'Rp ${formatter.format(value)}';
   }
 
 // Weekly or Monthly Options 
@@ -141,18 +141,8 @@ class _HistoryPageState extends State<HistoryPage> {
                         final data = doc.data();
                         final ts = (doc['timestamp'] as Timestamp).toDate();
                         final productName = (data['items'] ?? '').toString().toLowerCase();
-                        final rawAction = (data['action'] ?? '').toString().toLowerCase();
-                        final actionType = rawAction == 'delete'
-                            ? 'sold'
-                            :rawAction == 'add'
-                                ?'added'
-                                :'updated';
-                        final dateFormatted = DateFormat('dd MMM yyyy - HH:mm').format(ts).toLowerCase();
 
-                        final matchesSearch = productName.contains(searchQuery) ||
-                            actionType.contains(searchQuery) ||
-                            dateFormatted.contains(searchQuery);
-
+                        final matchesSearch = productName.contains(searchQuery);
                         final matchesFilter = filterDate == null || ts.isAfter(filterDate);
                         return matchesSearch && matchesFilter;
                       }).toList();
@@ -187,10 +177,10 @@ class _HistoryPageState extends State<HistoryPage> {
                           final timestamp = (data['timestamp'] as Timestamp).toDate();
 
                           String actionText = action == 'delete'
-                              ? 'sold'
+                              ? 'Deleted'
                               : action == 'add'
-                                  ? 'added'
-                                  : 'updated';
+                                  ? 'Added'
+                                  : 'Updated';
 
                           // Total Price
                           return Padding(
@@ -202,7 +192,7 @@ class _HistoryPageState extends State<HistoryPage> {
                               tileColor: Colors.white,
                               title: Text(product, style: GoogleFonts.alexandria(fontSize: 18, fontWeight: FontWeight.bold)),
                               subtitle: Text(
-                                "$actionText - $quantity unit\n"
+                                "${quantity == 0 && actionText == 'updated' ? 'Produk habis (update)' : '$actionText - $quantity unit'}\n"
                                 "Total: ${totalPrice != null ? formatCurrency(totalPrice) : "-"}\n"
                                 "${DateFormat('dd MMM yyyy – HH:mm').format(timestamp)}",
                                 style: GoogleFonts.alexandria(fontSize: 14),
@@ -211,7 +201,7 @@ class _HistoryPageState extends State<HistoryPage> {
                                 action == 'add'
                                     ? Icons.arrow_downward
                                     : action == 'delete'
-                                        ? Icons.sell
+                                        ? Icons.delete
                                         : Icons.edit,
                                 color: action == 'add'
                                     ? Colors.green

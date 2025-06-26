@@ -39,13 +39,14 @@ class _MyHomePageState extends State<MyHomePage> {
   List<String> categories = [];
   String? selectedFilterCategory;
   String selectedCategory = '';
+  String? role;
 
 
   Future<void> _logout() async {
   final prefs = await SharedPreferences.getInstance();
-  await prefs.remove('isLoggedIn'); 
-  if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+  await prefs.clear();
+  if(!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context,'/login', (route) => false);
   }
 
 
@@ -57,6 +58,14 @@ class _MyHomePageState extends State<MyHomePage> {
         categories = catList.map((cat) => cat.name).toList();
         categoryIcons = {for (var cat in catList) cat.name: cat.icon};
       });
+    });
+
+    _loadRole();
+  }
+    void _loadRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      role = prefs.getString('role') ?? 'user';
     });
   }
 
@@ -366,13 +375,14 @@ class _MyHomePageState extends State<MyHomePage> {
             children: [
               SpeedDialChild(
                 child: const Icon(Icons.category),
-                label: 'Tambah Kategori',
+                label: role == 'admin' ? 'Tambah Kategori' : 'Kategori',
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.white,
                 onTap: () {
                   Navigator.pushNamed(context, '/category');
                 },
               ),
+              if (role == 'admin')
               SpeedDialChild(
                 child: const Icon(Icons.add_box),
                 label: 'Tambah Produk',

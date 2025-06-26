@@ -1,6 +1,8 @@
 // import 'dart:ui';
 // import 'dart:ffi';
 
+// import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 // import 'package:flutter/widgets.dart';
@@ -11,6 +13,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 
 class HomePage extends StatefulWidget {
@@ -33,6 +36,7 @@ class _HomePageState extends State<HomePage> {
   String searchText = '';
   String? selectedFilterCategory;
   String selectedCategory = '';
+  String? role;
 
   FirestoreServices firestoreServices = FirestoreServices();
 
@@ -165,6 +169,8 @@ Future<void> exportToPDF() async {
                   final price = double.tryParse(normalizedPrice) ?? 0.0;
                   final sku = skuController.text.trim();
 
+                  Navigator.pop(context);
+                  
                   if (docId == null) {
                     await firestoreServices.addProduct(name, quantity, price, sku, selectedCategory);
                   } else {
@@ -179,15 +185,14 @@ Future<void> exportToPDF() async {
                   final price = double.tryParse(normalizedPrice) ?? 0.0;
                   final sku = skuController.text.trim();
                   
+                  Navigator.pop(context);
+                  
                   firestoreServices.updateProducts(docId, product, quantity, price, sku, selectedCategory, time!);
                 }
                 controller.clear();
                 quantityController.clear();
                 priceController.clear();
                 skuController.clear();
-
-                if(!mounted) return;
-                Navigator.pop(context);
               },
               child: Text(
                 'add',
@@ -203,7 +208,7 @@ Future<void> exportToPDF() async {
   @override
   void initState() {
     super.initState();
-
+// Role + Category Function
     firestoreServices.getCategories().listen((catList) {
       setState(() {
         categories = catList.map((cat) => cat.name).toList();
@@ -221,6 +226,14 @@ Future<void> exportToPDF() async {
         showProductsBox(null, null, null);
       });
     }
+    _loadRole();
+  }
+
+  void _loadRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      role = prefs.getString('role') ?? 'user';
+    });
   }
 
   @override
@@ -230,35 +243,78 @@ Future<void> exportToPDF() async {
       appBar: AppBar(
         centerTitle: true,
         backgroundColor: Colors.orange[500],
-        title: Text(
-          "Products",
+        title: Text( selectedFilterCategory != null
+          ? selectedFilterCategory! : 'Products',
           style: GoogleFonts.alexandria(
             color: Colors.white
           ),
         ),
         actions: [
+          // Export PDF
           IconButton(
-            // Pdf icon
               icon: Icon(Icons.picture_as_pdf, color: Colors.white),
               tooltip: 'Export to PDF',
                 onPressed: exportToPDF,
                 ),
+          // Delete All Products within category
+          IconButton(
+            icon: Icon(Icons.delete_forever, color: Colors.white),
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context, 
+                builder: (context) => AlertDialog(
+                  title: Text('Hapus Semua Produk'),
+                  content: Text('Yakin ingin menghapus semua produk di kategori $selectedFilterCategory?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false), child: Text('Batal')),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, true), child: Text('Hapus Semua')),
+                  ],
+                ));
+
+                if (confirm == true) {
+                  try {
+                  final productSnapshot = await FirebaseFirestore.instance
+                  .collection('products')
+                  .where('category', isEqualTo: selectedFilterCategory)
+                  .get();
+
+                  await Future.wait(productSnapshot.docs.map((doc) async {
+                    final docId = doc.id;
+                    await firestoreServices.deleteProduct(docId);
+                  }));
+
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Semua produk di kategori '$selectedFilterCategory' berhasil dihapus")),
+                  );
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Gagal menghapus produk: $e"))
+                  );
+                }}
+              }),
+          // History Page
           IconButton(
             icon: Icon(Icons.history, color:Colors.white),
             onPressed: () {
               Navigator.push(
                 context, MaterialPageRoute(builder: (context) => const HistoryPage()),
                 );
-            },)
+            },),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+
+      //  FAB
+      floatingActionButton: role == 'admin'? FloatingActionButton(
         backgroundColor: Colors.orange[500],
         child: Icon(Icons.add, color: Colors.white),
         onPressed: () async {
           showProductsBox(null, null, null);
         },
-      ),
+      ): null,
 
 
   body: Column(
@@ -283,22 +339,22 @@ Future<void> exportToPDF() async {
     ),
 
     // Dropdown filter
-    Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: DropdownButton(
-        isExpanded: true,
-        hint: Text('Filter by Category'),
-        value: selectedFilterCategory,
-        items: categories
-            .map((cat) => DropdownMenuItem(value: cat, child: Text(cat.toUpperCase())))
-            .toList(),
-          onChanged: (value) {
-            setState(() {
-              selectedFilterCategory = value;
-            });
-          },
-        ),
-      ),
+    // Padding(
+    //   padding: const EdgeInsets.symmetric(horizontal: 10),
+    //   child: DropdownButton(
+    //     isExpanded: true,
+    //     hint: Text('Filter by Category'),
+    //     value: selectedFilterCategory,
+    //     items: categories
+    //         .map((cat) => DropdownMenuItem(value: cat, child: Text(cat.toUpperCase())))
+    //         .toList(),
+    //       onChanged: (value) {
+    //         setState(() {
+    //           selectedFilterCategory = value;
+    //         });
+    //       },
+    //     ),
+    //   ),
       
 
             Expanded(
@@ -331,7 +387,7 @@ Future<void> exportToPDF() async {
                 String sku = data['sku']?.toString()?? 'No SKU';
                 String selectedCategory = data['category']?.toString()?? 'No category';
                 int quantity = data['quantity'] ?? 0;
-                double price = (data['price'] != null) ? data['price'].toDouble() : 0.0;
+                double price = (data['price'] as num?)?.toDouble() ?? 0.0;
                 Timestamp time = data['timestamp'] ?? Timestamp.now();
                 return Column(
                   children: [
@@ -376,6 +432,7 @@ Future<void> exportToPDF() async {
                           ],
                         ),
 
+                        // Update product button
                         trailing: Column(
                           children: [
                             Row(
@@ -389,8 +446,7 @@ Future<void> exportToPDF() async {
                                   },
                                 ),
 
-
-                                // Sell product
+                                // Sell product button
                                 IconButton(
                                     color: Colors.orange[500],
                                     onPressed: () {
@@ -400,7 +456,7 @@ Future<void> exportToPDF() async {
                                         context: context,
                                         builder: (context) {
                                           return AlertDialog(
-                                            title: Text('Sell Stock'),
+                                            title: Text('Drop Item'),
                                             content: TextField(
                                               controller: deleteQtyController,
                                               keyboardType: TextInputType.number,
@@ -413,21 +469,20 @@ Future<void> exportToPDF() async {
                                                 },
                                                 child: Text("Cancel"),
                                               ),
-                                              TextButton(onPressed: () {
+                                              TextButton(onPressed: ()  {
                                                 final qtytoDelete = int.tryParse(deleteQtyController.text.trim()) ?? 0;
                                                 if (qtytoDelete > 0 && qtytoDelete <= quantity) {
                                                   final newQty = quantity - qtytoDelete;
-                                                  final totalPrice = qtytoDelete * price;
-
+                                                  // final totalPrice = qtytoDelete * price;            
                                                   if (newQty > 0) {
                                                     firestoreServices.updateProducts(docId, product, newQty, price, sku, selectedCategory, time);
                                                   } else {
+                                                    Future.delayed(Duration(milliseconds: 100));
                                                     firestoreServices.deleteProduct(docId);
                                                   }
-
-                                                  firestoreServices.addHistory(product, 'delete', qtytoDelete, sku, selectedCategory, totalPrice: totalPrice);
+                                                  // firestoreServices.addHistory(product, 'delete', qtytoDelete, sku, selectedCategory, totalPrice: totalPrice);
                                                   Navigator.pop(context);
-                                                } 
+                                                }
                                               },
                                               child: Text("OK"),
                                               ),

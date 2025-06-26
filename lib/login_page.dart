@@ -1,7 +1,9 @@
+// import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 // import 'package:firebase_auth/firebase_auth.dart';
 // import 'package:flutter_application_2/homepage.dart';
 // import 'package:flutter_application_2/menu_dashboard.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
@@ -32,21 +34,47 @@ Future<void> _handleLogin() async {
 
     await Future.delayed(Duration(seconds: 1));
 
-    String username = _usernameController.text.trim();
-    String password = _passwordController.text;
+    String inputUsername = _usernameController.text.trim();
+    String inputPassword = _passwordController.text;
 
-    if (username == 'admin' && password == 'admin') {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isLoggedIn', true);
+    try {
+      QuerySnapshot userQuery = await FirebaseFirestore.instance
+      .collection('users')
+      .where('username', isEqualTo: inputUsername)
+      .limit(1)
+      .get();
+    
+      if (userQuery.docs.isNotEmpty) {
+        var userData = userQuery.docs.first.data() as Map<String, dynamic>;
+        String storedPassword = userData['password'];
+        String role = userData['role'];
 
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+        if (inputPassword == storedPassword) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('isLoggedIn', true);
+          await prefs.setString('role', role);
 
-      Navigator.pushNamedAndRemoveUntil(context, '/homepage', (route) => false);
+          if(!mounted) return;
+          setState(() {
+            _isLoading = false;
+          });
 
-    } else {
+        if (role == 'admin') {
+          Navigator.pushNamedAndRemoveUntil(context, '/homepage', (route) => false);
+          return;
+        } else if (role == 'user') {
+          Navigator.pushNamedAndRemoveUntil(context, '/homepage', (route) => false);
+          return;
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Pengguna tidak dikenali'), backgroundColor: Colors.red),
+          );
+        }
+        return;
+        }
+      }
+
+    // Login Gagal
       setState(() {
         _isLoading = false;
       });
@@ -58,6 +86,16 @@ Future<void> _handleLogin() async {
           backgroundColor: Colors.red,
         ),
       );
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Terjadi Kesalahan. Coba lagi'),
+          backgroundColor: Colors.red,
+          ));
     }
   }
 }
