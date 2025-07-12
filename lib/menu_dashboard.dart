@@ -127,6 +127,7 @@ class _MyHomePageState extends State<MyHomePage> {
             onPressed: () => Navigator.pop(context),
             child: Text("Batal"),
           ),
+          
           ElevatedButton(
             onPressed: () async {
               final product = controller.text.trim();
@@ -137,7 +138,7 @@ class _MyHomePageState extends State<MyHomePage> {
               final sku = skuController.text.trim();
 
               if (product.isNotEmpty && sku.isNotEmpty) {
-                await firestoreServices.addProduct(product, quantity, price, sku, selectedCategory);
+                await firestoreServices.addProduct(product, quantity, price, sku, selectedCategory, '');
               }
 
               if (context.mounted) {

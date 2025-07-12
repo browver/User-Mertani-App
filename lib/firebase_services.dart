@@ -1,9 +1,7 @@
-// import 'package:cloud_firestore/cloud_firestore.dart';
-
-// import 'dart:ui';
-
+import 'package:crypto/crypto.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-// import 'package:flutter/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_2/category_model.dart';
 
@@ -18,6 +16,42 @@ class FirestoreServices {
     FirebaseFirestore.instance.collection('sensors');
   final CollectionReference? loggers =
     FirebaseFirestore.instance.collection('loggers');
+
+// To get the public id from secure url
+  String? _extractPublicIdFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final segments = uri.pathSegments;
+      final fileName = segments.last;
+      final dotIndex = fileName.lastIndexOf('.');
+      return dotIndex != -1 ? fileName.substring(0, dotIndex) : fileName;
+    } catch (e) {
+      return null;
+    }
+  }
+
+// Delete Image
+Future<void> _deleteFromCloudinary(String publicId) async {
+  const cloudName ='dopauoogt';
+  const apiKey = '424485965836465';
+  const apiSecret = 'ARSRXe6QooG9i74i1i9R6vqia_M';
+  
+  final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+  final signatureRaw ='public_id=$publicId&timestamp=$timestamp$apiSecret';
+  final signature = sha1.convert(utf8.encode(signatureRaw)).toString();
+
+  final url = Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/image/destroy');
+  final headers = {
+    'Content-Type' : 'application/x-www-form-urlencoded',
+  };
+
+  await http.post(url, headers: headers, body: {
+    'public_id' : publicId,
+    'api_key' : apiKey,
+    'timestamp' : timestamp.toString(),
+    'signature' :signature,
+  });
+}
 
 
   // Category default seeder
@@ -89,7 +123,6 @@ class FirestoreServices {
       final categoryRef = FirebaseFirestore.instance.collection('categories').doc(categoryName);
       final subProductsQuery = await categoryRef.collection('products').get();
 
-
       for (final doc in productDocs.docs) {
         final data = doc.data() as Map<String, dynamic>;
         final product = data['product'] ?? '';
@@ -97,8 +130,9 @@ class FirestoreServices {
         final price = (data['price'] as num?)?.toDouble() ?? 0.0;
         final sku = data['sku'] ?? '';
         final category = data['category'] ?? '';
+        final imageUrl = data['imageUrl'] ?? '';
 
-        await addHistory(product, 'delete', quantity, sku, category, totalPrice: quantity * price);
+        await addHistory(product, 'delete', quantity, sku, category, imageUrl, totalPrice: quantity * price);
         batch.delete(doc.reference);
       }
       for (final doc in subProductsQuery.docs) {
@@ -109,22 +143,24 @@ class FirestoreServices {
   }
 
   // adding Product
-  Future<void> addProduct(String name, int quantity, double price, String sku, String category) async{
-
+  Future<void> addProduct(String name, int quantity, double price, String sku, String category, String imageUrl) async{
     final data = {
       'product':name,
       'quantity': quantity,
       'price': price,
       'sku': sku,
-      'category': category,  
+      'category': category,
+      if (imageUrl.isNotEmpty) 'imageUrl' : imageUrl,  
       'timestamp': FieldValue.serverTimestamp()
     };
     
     // add to collections
-    await products!.add(data);
-
+    final docRef = await products!.add(data);
     final categoryRef = FirebaseFirestore.instance.collection('categories').doc(category);
-    await categoryRef.collection('products').add(data);
+    await categoryRef.collection('products').add({
+      ...data,
+      'docId' : docRef.id,
+      });
 
     // add to history
     await addHistory(
@@ -133,6 +169,7 @@ class FirestoreServices {
       quantity,
       sku,
       category,
+      imageUrl,
       totalPrice: quantity * price,
     );    
   }
@@ -153,42 +190,83 @@ class FirestoreServices {
   }
 
   // update Product
-  Future<void> updateProducts(String docId, String newProduct, int quantity, double price, String sku, String category,Timestamp time) async{
+  Future<void> updateProducts(String docId, String newProduct, int quantity, double price, String sku, String oldCategory, String newCategory,String imageUrl, Timestamp time) async{
     await products!.doc(docId).update({
       'product':newProduct,
       'quantity':quantity,
       'price':price,
       'sku': sku,
-      'category': category,
+      'category': newCategory,
+      if (imageUrl.isNotEmpty) 'imageUrl' : imageUrl,  
       'timestamp': time});
 
-      await updateProductInCategorySubcollection(sku, category, quantity, price);
+      final newData = {
+      'product':newProduct,
+      'quantity':quantity,
+      'price':price,
+      'sku': sku,
+      'imageUrl' : imageUrl,
+      'docId' : docId,
+      'timestamp': time
+      };
 
-    if (quantity > 0) {
-      await addHistory(
-      newProduct,
-      'update',
-      quantity,
-      sku,
-      category,
-      totalPrice: quantity * price,  
-    );
-  }
+      if(oldCategory == newCategory) {
+        final subProducts = await categories!
+          .doc(newCategory)
+          .collection('products')
+          .where('docId', isEqualTo: docId)
+          .get();
+
+        for (var doc in subProducts.docs) {
+          await doc.reference.update(newData);
+        }
+      } else {
+        final oldSubProducts = await categories!
+          .doc(oldCategory)
+          .collection('products')
+          .where('docId', isEqualTo: docId)
+          .get();
+
+          for(var doc in oldSubProducts.docs) {
+            await doc.reference.delete();
+          }
+
+          await categories!
+            .doc(newCategory)
+            .collection('products')
+            .add(newData);
+      }
+
+      // await updateProductInCategorySubcollection(docId, sku, newProduct, newCategory, quantity, price, imageUrl);
+
+      if (quantity > 0) {
+        await addHistory(
+        newProduct,
+        'update',
+        quantity,
+        sku,
+        newCategory,
+        imageUrl,
+        totalPrice: quantity * price,  
+      );
+    }
   }
 
   // Update Product in Category
-  Future<void> updateProductInCategorySubcollection(String sku, String category, int quantity, double price) async {
-    final subProducts = await FirebaseFirestore.instance
-    .collection('categories')
+  Future<void> updateProductInCategorySubcollection(String docId, String sku, String product, String category, int quantity, double price, String imageUrl) async {
+    final subProducts = await categories!
     .doc(category)
     .collection('products')
-    .where('sku', isEqualTo: sku)
+    .where('docId', isEqualTo: docId)
     .get();
 
     for (var doc in subProducts.docs) {
       await doc.reference.update({
+        'product' : product,
         'quantity' : quantity,
-        'price' : price
+        'price' : price,
+        'imageUrl' : imageUrl,
+        'sku' : sku
       });
     }
   }
@@ -204,7 +282,14 @@ class FirestoreServices {
       final price = (data['price'] as num?)?.toDouble() ?? 0.0;
       final sku = data['sku'] ?? '';
       final category = data['category'] ?? '';
-
+      final imageUrl = data['imageUrl'] ?? '';
+      
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        final publicId = _extractPublicIdFromUrl(imageUrl);
+        if (publicId != null) {
+          await _deleteFromCloudinary(publicId);
+        }
+      }
 
       await addHistory(
         product,
@@ -212,13 +297,14 @@ class FirestoreServices {
         quantity,
         sku,
         category,
+        imageUrl,
         totalPrice: quantity * price,
       );
 
       final categoryRef = FirebaseFirestore.instance.collection('categories').doc(category);
       final subProducts = await categoryRef
           .collection('products')
-          .where('sku', isEqualTo: sku)
+          .where('docId', isEqualTo: docId)
           .get();
       for (var doc in subProducts.docs) {
         await doc.reference.delete();
@@ -228,43 +314,15 @@ class FirestoreServices {
     await products!.doc(docId).delete();
   }
 
-    // Delete Category with products in it
-    // Future<void> deleteCategoryWithProductsa(String categoryName) async {
-    //   final productDocs = await products!
-    //     .where('category', isEqualTo: categoryName)
-    //     .get();
-
-    //   final batch = FirebaseFirestore.instance.batch();
-    //   final categoryRef = FirebaseFirestore.instance.collection('categories').doc(categoryName);
-    //   final subProductsQuery = await categoryRef.collection('products').get();
-
-
-    //   for (final doc in productDocs.docs) {
-    //     final data = doc.data() as Map<String, dynamic>;
-    //     final product = data['product'] ?? '';
-    //     final quantity = data['quantity'] ?? 0;
-    //     final price = (data['price'] as num?)?.toDouble() ?? 0.0;
-    //     final sku = data['sku'] ?? '';
-    //     final category = data['category'] ?? '';
-
-    //     await addHistory(product, 'delete', quantity, sku, category, totalPrice: quantity * price);
-    //     batch.delete(doc.reference);
-    //   }
-    //   for (final doc in subProductsQuery.docs) {
-    //     batch.delete(doc.reference);
-    //   }
-    //   batch.delete(categoryRef);
-    //   await batch.commit();
-    // }
-
   // History
-  Future<void> addHistory(String items, String action ,int quantity, String sku, String category,{double? totalPrice}) async {
+  Future<void> addHistory(String items, String action ,int quantity, String sku, String category, String imageUrl, {double? totalPrice}) async {
     await FirebaseFirestore.instance.collection('history').add({
       'items':items,
       'quantity':quantity,
       'action':action,
       'sku': sku,
       'category': category,
+      'imageUrl' : imageUrl.isNotEmpty ? imageUrl : null,
       'total_price': totalPrice,
       'timestamp':Timestamp.now(),
     });

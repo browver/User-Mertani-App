@@ -1,11 +1,11 @@
-// import 'dart:ui';
-// import 'dart:ffi';
-
-// import 'dart:math';
-
+import 'package:permission_handler/permission_handler.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-// import 'package:flutter/widgets.dart';
+import 'dart:io';
+import 'package:crypto/crypto.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:flutter_application_2/firebase_services.dart';
 import 'package:flutter_application_2/history_page.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -32,15 +32,110 @@ class _HomePageState extends State<HomePage> {
   TextEditingController priceController = TextEditingController();
   TextEditingController searchController = TextEditingController();
   TextEditingController skuController =TextEditingController();
+  TextEditingController imageUrlController =TextEditingController();
 
   String searchText = '';
   String? selectedFilterCategory;
   String selectedCategory = '';
   String? role;
+  String?imageUrl;
+  final picker = ImagePicker();
 
   FirestoreServices firestoreServices = FirestoreServices();
 
   List<String> categories = [];
+
+// Cloudinary setup
+Future<String?> uploadToCloudinary(File imageFile) async {
+  const cloudName ='dopauoogt';
+  const uploadPreset = 'warehouse_app';
+
+  final url = Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/image/upload');
+
+    final request = http.MultipartRequest('POST', url)
+    ..fields['upload_preset'] = uploadPreset
+    ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+
+    final response = await request.send();
+    final responseBody = await response.stream.bytesToString();
+
+    if(response.statusCode == 200) {
+      final json = jsonDecode(responseBody);
+      return json['secure_url'];
+    } else {
+      return null;
+    }
+}
+
+// Delete Image
+Future<void> deleteFromCloudinary(String publicId) async {
+  const cloudName ='dopauoogt';
+  const apiKey = '424485965836465';
+  const apiSecret = 'ARSRXe6QooG9i74i1i9R6vqia_M';
+  
+  final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+  final signatureRaw ='public_id=$publicId&timestamp=$timestamp$apiSecret';
+  final signature = sha1.convert(utf8.encode(signatureRaw)).toString();
+
+  final url = Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/image/destroy');
+  final headers = {
+    'Content-Type' : 'application/x-www-form-urlencoded',
+  };
+
+  await http.post(url, headers: headers, body: {
+    'public_id' : publicId,
+    'api_key' : apiKey,
+    'timestamp' : timestamp.toString(),
+    'signature' :signature,
+  });
+}
+
+// Pick and Upload Image from gallery
+bool isUploading = false; 
+Future<void> pickAndUploadImage() async {
+  final picked = await picker.pickImage(source: ImageSource.gallery);
+  if(picked != null) {
+    setState(() {
+      isUploading = true;
+    });
+    final file = File(picked.path);
+    final url = await uploadToCloudinary(file);
+    if(!mounted) return;
+    if(url != null) {
+      if(!mounted) return;
+      setState(() {
+        imageUrlController.text = url;
+        imageUrl = url;
+        isUploading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+       SnackBar(content: Text('Upload berhasil')), 
+      );
+    } else {
+      setState(() => isUploading = false);
+      if(!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal Upload gambar')),
+      );
+    }
+  }
+}
+
+// Permission requests
+Future<void> requestPermissions() async {
+  final statuses = await [
+    Permission.photos,
+    Permission.storage,
+    Permission.camera
+  ].request();
+
+  if(statuses.values.any((status) => status.isDenied || status.isPermanentlyDenied)) {
+    if(!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Izin akses gambar diperlukan'))
+    );
+  }
+}
 
 // Export PDF
 Future<void> exportToPDF() async {
@@ -52,6 +147,7 @@ Future<void> exportToPDF() async {
     if (!mounted) return;
 
     if (products.isEmpty) {
+      if(!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Tidak ada produk untuk diekspor.")),
       );
@@ -94,7 +190,7 @@ Future<void> exportToPDF() async {
 }
 
   // UI Tampilan Products
-  void showProductsBox(String? textToedit, String? docId, Timestamp? time) {
+  void showProductsBox(String? textToedit, String? docId, Timestamp? time) {    
     showDialog(
       context: context,
       builder: (context) {
@@ -109,98 +205,161 @@ Future<void> exportToPDF() async {
               quantityController.text = data['quantity']?.toString() ?? ''; 
               priceController.text = data['price']?.toString() ?? ''; 
               selectedCategory = data['category'] ?? selectedCategory;
+              imageUrlController.text = data['imageUrl'] ?? '';
             }
           });
         }
-        return AlertDialog(
-          title: Text(
-            "Add product",
-            style: GoogleFonts.alexandria(fontSize: 16),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                decoration: InputDecoration(hintText: 'Nama Barang...'),
-                style: GoogleFonts.alexandria(),
-                controller: controller,
-              ),
-              TextField(
-                decoration: InputDecoration(hintText: 'SKU...'),
-                style: GoogleFonts.alexandria(),
-                controller: skuController,
-              ),
-              TextField(
-                decoration: InputDecoration(hintText: 'Jumlah...'),
-                keyboardType: TextInputType.number,
-                controller: quantityController,
-              ),
-              TextField(
-                decoration: InputDecoration(hintText: 'Harga...'),
-                keyboardType: TextInputType.number,
-                controller: priceController,
-              ),
 
-              // Dropdown Category
-              DropdownButtonFormField<String>(
-                value: categories.contains(selectedCategory)? selectedCategory: null,
-                items: categories
-                  .map((cat) => DropdownMenuItem(value: cat, child: Text(cat.toUpperCase())))
-                  .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    selectedCategory = value!;
-                  });
-                },
-                decoration: InputDecoration(hintText: 'Kategori'),
-              ),
-            ],
-          ),
+        // UI add product button
+        return StatefulBuilder(builder:(context, setState){
+          return AlertDialog(
+            title: Text(
+              "Add product",
+              style: GoogleFonts.alexandria(fontSize: 16),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  decoration: InputDecoration(hintText: 'Nama Barang...'),
+                  style: GoogleFonts.alexandria(),
+                  controller: controller,
+                ),
+                TextField(
+                  decoration: InputDecoration(hintText: 'SKU...'),
+                  style: GoogleFonts.alexandria(),
+                  controller: skuController,
+                ),
+                TextField(
+                  decoration: InputDecoration(hintText: 'Jumlah...'),
+                  keyboardType: TextInputType.number,
+                  controller: quantityController,
+                ),
+                TextField(
+                  decoration: InputDecoration(hintText: 'Harga...'),
+                  keyboardType: TextInputType.number,
+                  controller: priceController,
+                ),
 
-          // Add Product
-          actions: [
-            ElevatedButton(
-              onPressed: () async {
-                if (docId == null) {
-                  final name = controller.text.trim();
-                  final quantity = int.tryParse(quantityController.text.trim()) ?? 0;
-                  final rawPrice = priceController.text.trim();
-                  final normalizedPrice = rawPrice.replaceAll('.', '').replaceAll(',', '.');
-                  final price = double.tryParse(normalizedPrice) ?? 0.0;
-                  final sku = skuController.text.trim();
+                // Dropdown Category
+                DropdownButtonFormField<String>(
+                  value: categories.contains(selectedCategory)? selectedCategory: null,
+                  items: categories
+                    .map((cat) => DropdownMenuItem(value: cat, child: Text(cat.toUpperCase())))
+                    .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedCategory = value!;
+                    });
+                  },
+                  decoration: InputDecoration(hintText: 'Kategori'),
+                ),
+              ],
+            ),
 
-                  Navigator.pop(context);
-                  
-                  if (docId == null) {
-                    await firestoreServices.addProduct(name, quantity, price, sku, selectedCategory);
-                  } else {
-                    await firestoreServices.updateProducts(docId, name, quantity, price, sku, selectedCategory, time!);
+            // Button actions
+            actions: [
+            const SizedBox(height: 12),
+
+            // Choosing picture
+              ElevatedButton.icon(
+                onPressed: isUploading ? null : () async {
+                  final picked = await picker.pickImage(source: ImageSource.gallery);
+                  if(picked != null) {
+                    setState(() => isUploading = true);
+                    
+                    final file = File(picked.path);
+                    final url = await uploadToCloudinary(file);
+                    if(!context.mounted) return;
+
+                    if(url != null) {
+                      setState(() {
+                        imageUrlController.text = url;
+                        isUploading = false;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Upload berhasil'))
+                      );
+                    } else {
+                      setState(() => isUploading = false);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Gagal Upload gambar'))
+                      );
+                    }
                   }
-          // Update Product
-                } else {
-                  final product = controller.text.trim();
-                  final quantity = int.tryParse(quantityController.text.trim()) ?? 0;
-                  final rawPrice = priceController.text.trim();
-                  final normalizedPrice = rawPrice.replaceAll('.', '').replaceAll(',', '.');
-                  final price = double.tryParse(normalizedPrice) ?? 0.0;
-                  final sku = skuController.text.trim();
-                  
-                  Navigator.pop(context);
-                  
-                  firestoreServices.updateProducts(docId, product, quantity, price, sku, selectedCategory, time!);
-                }
-                controller.clear();
-                quantityController.clear();
-                priceController.clear();
-                skuController.clear();
-              },
-              child: Text(
-                'add',
-                style: GoogleFonts.alexandria(),
+                },
+                icon: Icon(Icons.image),
+                label: Text('Pilih gambar'),
               ),
-            )
-          ],
-        );
+
+              if(isUploading)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: CircularProgressIndicator()),
+            // Add Product
+              ElevatedButton(
+                onPressed: isUploading ? null : () async {
+                  if (docId == null) {
+                    final name = controller.text.trim();
+                    final quantity = int.tryParse(quantityController.text.trim()) ?? 0;
+                    final rawPrice = priceController.text.trim();
+                    final normalizedPrice = rawPrice.replaceAll('.', '').replaceAll(',', '.');
+                    final price = double.tryParse(normalizedPrice) ?? 0.0;
+                    final sku = skuController.text.trim();
+                    final imageUrl = imageUrlController.text.trim();
+
+                    if(isUploading) {
+                    if(!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Tunggu hingga gambar selesai di-upload')),
+                      );
+                      return;
+                    }
+
+                    if (docId == null) {
+                      await firestoreServices.addProduct(name, quantity, price, sku, selectedCategory, imageUrl);
+                    } else {
+                      final docSnapshot = await FirebaseFirestore.instance.collection('products').doc(docId).get();
+                      final oldData = docSnapshot.data() as Map<String, dynamic>;
+                      final oldCategory = oldData['category'] ?? selectedCategory;
+
+                      await firestoreServices.updateProducts(docId, name, quantity, price, sku,oldCategory, selectedCategory, imageUrl, time!);
+                    }
+                    if(!context.mounted) return;
+                    Navigator.pop(context);
+
+            // Update Product
+                  } else {
+                    final product = controller.text.trim();
+                    final quantity = int.tryParse(quantityController.text.trim()) ?? 0;
+                    final rawPrice = priceController.text.trim();
+                    final normalizedPrice = rawPrice.replaceAll('.', '').replaceAll(',', '.');
+                    final price = double.tryParse(normalizedPrice) ?? 0.0;
+                    final sku = skuController.text.trim();
+                    final imageUrl = imageUrlController.text.trim();
+                    final docSnapshot = await FirebaseFirestore.instance.collection('products').doc(docId).get();
+                    final oldData = docSnapshot.data() as Map<String, dynamic>;
+                    final oldCategory = oldData['category'] ?? selectedCategory;
+
+                    if(!context.mounted) return;
+                    Navigator.pop(context);
+                    
+                    await firestoreServices.updateProducts(docId, product, quantity, price, sku, oldCategory, selectedCategory, imageUrl, time!);
+                  }
+                  controller.clear();
+                  quantityController.clear();
+                  priceController.clear();
+                  skuController.clear();
+                  imageUrlController.clear();
+                },
+                child: Text(
+                  docId == null ? 'Add' : 'Update',
+                  style: GoogleFonts.alexandria(),
+                ),
+              )
+            ],
+          );
+        });
       },
     );
   }
@@ -336,44 +495,25 @@ Future<void> exportToPDF() async {
           });
         },
       ),
-    ),
+    ),  
 
-    // Dropdown filter
-    // Padding(
-    //   padding: const EdgeInsets.symmetric(horizontal: 10),
-    //   child: DropdownButton(
-    //     isExpanded: true,
-    //     hint: Text('Filter by Category'),
-    //     value: selectedFilterCategory,
-    //     items: categories
-    //         .map((cat) => DropdownMenuItem(value: cat, child: Text(cat.toUpperCase())))
-    //         .toList(),
-    //       onChanged: (value) {
-    //         setState(() {
-    //           selectedFilterCategory = value;
-    //         });
-    //       },
-    //     ),
-    //   ),
-      
+      Expanded(
+        // Show Products
+        child: StreamBuilder(
+        stream: FirestoreServices().showProducts(),
+        builder: (context, snapshot) {
+        if (snapshot.hasData) {
+        List productList= snapshot.data!.docs;
 
-            Expanded(
-              // Show Products
-              child: StreamBuilder(
-                stream: FirestoreServices().showProducts(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasData) {
-                    List productList= snapshot.data!.docs;
-
-                  //Filter product search + category
-                    productList = productList.where((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      final name = data['product'].toString().toLowerCase();
-                      final category = data['category']?.toString().toLowerCase() ?? '';
-                      final matchesSearch = searchText.isEmpty || name.contains(searchText);
-                      final matchesCategory = selectedFilterCategory == null || category == selectedFilterCategory!.toLowerCase();
-                      return matchesSearch && matchesCategory;
-                    }).toList();
+      //Filter product search + category
+        productList = productList.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final name = data['product'].toString().toLowerCase();
+          final category = data['category']?.toString().toLowerCase() ?? '';
+          final matchesSearch = searchText.isEmpty || name.contains(searchText);
+          final matchesCategory = selectedFilterCategory == null || category == selectedFilterCategory!.toLowerCase();
+          return matchesSearch && matchesCategory;
+          }).toList();
 
             // ListTile
             return ListView.builder(
@@ -445,8 +585,33 @@ Future<void> exportToPDF() async {
                                     showProductsBox(product, docId, time);
                                   },
                                 ),
+                                // Insert Image Button
+                                IconButton(
+                                  color: Colors.orange[500],
+                                  icon: Icon(Icons.image),
+                                  onPressed: () {
+                                    final imageUrl = data['imageUrl'] ?? '';
+                                    if (imageUrl.isNotEmpty) {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          title:  Text('Item Image'),
+                                          content:  Image.network(imageUrl, height: 200),
+                                        ),     
+                                      );
+                                    } else {
+                                      showDialog(
+                                        context: context, 
+                                        builder: (context) => AlertDialog(
+                                          title: Text('Item Image'),
+                                          content: Text('Tidak ada gambar'),
+                                        )
+                                      );
+                                    }
+                                  },
+                                ),
 
-                                // Sell product button
+                                // Delete product button
                                 IconButton(
                                     color: Colors.orange[500],
                                     onPressed: () {
@@ -473,9 +638,11 @@ Future<void> exportToPDF() async {
                                                 final qtytoDelete = int.tryParse(deleteQtyController.text.trim()) ?? 0;
                                                 if (qtytoDelete > 0 && qtytoDelete <= quantity) {
                                                   final newQty = quantity - qtytoDelete;
+                                                  final imageUrl = data['imageUrl']?.toString() ?? '';
+                                                  
                                                   // final totalPrice = qtytoDelete * price;            
                                                   if (newQty > 0) {
-                                                    firestoreServices.updateProducts(docId, product, newQty, price, sku, selectedCategory, time);
+                                                    firestoreServices.updateProducts(docId, product, newQty, price, sku, selectedCategory, selectedCategory,  imageUrl, time);
                                                   } else {
                                                     Future.delayed(Duration(milliseconds: 100));
                                                     firestoreServices.deleteProduct(docId);
