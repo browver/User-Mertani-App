@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 // import 'package:flutter_application_2/homepage.dart';
 // import 'package:flutter_application_2/menu_dashboard.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_application_2/firebase_services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -26,8 +29,15 @@ class LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+// Hashed Password (optional)
+String hashPassword(String password) {
+  return sha256.convert(utf8.encode(password)).toString();
+}
+//---------------------------
+
 Future<void> _handleLogin() async {
   if (_formKey.currentState!.validate()) {
+    FocusScope.of(context).unfocus();
     setState(() {
       _isLoading = true;
     });
@@ -43,26 +53,44 @@ Future<void> _handleLogin() async {
       .where('username', isEqualTo: inputUsername)
       .limit(1)
       .get();
+
+      if(userQuery.docs.isEmpty) {
+        setState(() {
+          _isLoading = false;
+        });
+        if(!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('User tidak ditemukan'), backgroundColor: Colors.red),
+        );
+        return;
+      }
     
       if (userQuery.docs.isNotEmpty) {
         var userData = userQuery.docs.first.data() as Map<String, dynamic>;
-        String storedPassword = userData['password'];
+        String? storedPassword = userData['password'];
         String role = userData['role'];
+
+        if(storedPassword == null || storedPassword.isEmpty) {
+          throw Exception('Password belum di-set');
+        }
 
         if (inputPassword == storedPassword) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isLoggedIn', true);
           await prefs.setString('role', role);
+          await prefs.setString('userId', userQuery.docs.first.id);
+          await prefs.setString('username', userData['username']);
+          await FirestoreServices().updateUnknownHistroryEntries();
 
           if(!mounted) return;
           setState(() {
             _isLoading = false;
           });
 
-        if (role == 'admin') {
-          Navigator.pushNamedAndRemoveUntil(context, '/homepage', (route) => false);
-          return;
-        } else if (role == 'user') {
+          _usernameController.clear();
+          _passwordController.clear();
+
+        if (role == 'admin' || role == 'user') {
           Navigator.pushNamedAndRemoveUntil(context, '/homepage', (route) => false);
           return;
         } else {

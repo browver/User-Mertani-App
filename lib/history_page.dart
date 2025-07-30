@@ -175,6 +175,7 @@ class _HistoryPageState extends State<HistoryPage> {
                           final quantity = data['quantity'] ?? 0;
                           final totalPrice = data['total_price'];
                           final timestamp = (data['timestamp'] as Timestamp).toDate();
+                          final user = data['by'] ?? 'Unknown';
 
                           String actionText = action == 'delete'
                               ? 'Deleted'
@@ -194,7 +195,8 @@ class _HistoryPageState extends State<HistoryPage> {
                               subtitle: Text(
                                 "${quantity == 0 && actionText == 'updated' ? 'Produk habis (update)' : '$actionText - $quantity unit'}\n"
                                 "Total: ${totalPrice != null ? formatCurrency(totalPrice) : "-"}\n"
-                                "${DateFormat('dd MMM yyyy – HH:mm').format(timestamp)}",
+                                "${DateFormat('dd MMM yyyy – HH:mm').format(timestamp)}\n"
+                                "by: $user",
                                 style: GoogleFonts.alexandria(fontSize: 14),
                               ),
                               leading: Icon(

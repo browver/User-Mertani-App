@@ -12,6 +12,9 @@ import 'package:flutter_application_2/firebase_services.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 // import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+
 
 
 class MyHomePage extends StatefulWidget {
@@ -70,6 +73,21 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Map<String, IconData> categoryIcons = {};
+
+  // Get User
+Future<String> getCurrentUserName() async {
+  final prefs = await SharedPreferences.getInstance();
+  final userId = prefs.getString('userId');
+
+  if (userId == null) return 'Unknown';
+
+  final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+  if (doc.exists) {
+    final data = doc.data();
+    return data?['name'] ?? 'Unknown';
+  }
+  return 'Unknown';
+}
 
 
 // Fungsi pemanggilan add
@@ -136,9 +154,10 @@ class _MyHomePageState extends State<MyHomePage> {
               final normalizedPrice = rawPrice.replaceAll('.', '').replaceAll(',', '.');
               final price = double.tryParse(normalizedPrice) ?? 0.0;
               final sku = skuController.text.trim();
+              final byId = await getCurrentUserName();
 
               if (product.isNotEmpty && sku.isNotEmpty) {
-                await firestoreServices.addProduct(product, quantity, price, sku, selectedCategory, '');
+                await firestoreServices.addProduct(product, quantity, price, sku, selectedCategory, byId ,'');
               }
 
               if (context.mounted) {
@@ -353,13 +372,13 @@ class _MyHomePageState extends State<MyHomePage> {
                       );
                     },
                   ),
-                _buildGridItem(
-                    context,
-                    'Borrowed',
-                    Icons.people_outline,
-                    const Color(0xFFFF8C00),
-                    () {},
-                  ),
+                // _buildGridItem(
+                //     context,
+                //     'Borrowed',
+                //     Icons.people_outline,
+                //     const Color(0xFFFF8C00),
+                //     () {},
+                //   ),
                 ],
               ),
             ),

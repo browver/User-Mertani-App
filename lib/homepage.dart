@@ -98,9 +98,17 @@ Future<void> pickAndUploadImage() async {
     setState(() {
       isUploading = true;
     });
+
     final file = File(picked.path);
-    final url = await uploadToCloudinary(file);
+    // print('${await file.length()}');
+    final compressed = await firestoreServices.compressImage(file);
+    
+    if(compressed != null) {
+    // print('${await compressed.length()}');
+    final url = await uploadToCloudinary(compressed);
+    
     if(!mounted) return;
+
     if(url != null) {
       if(!mounted) return;
       setState(() {
@@ -108,6 +116,7 @@ Future<void> pickAndUploadImage() async {
         imageUrl = url;
         isUploading = false;
       });
+    }
       ScaffoldMessenger.of(context).showSnackBar(
        SnackBar(content: Text('Upload berhasil')), 
       );
@@ -135,6 +144,21 @@ Future<void> requestPermissions() async {
       const SnackBar(content: Text('Izin akses gambar diperlukan'))
     );
   }
+}
+
+// Get User
+Future<String> getCurrentUserName() async {
+  final prefs = await SharedPreferences.getInstance();
+  final userId = prefs.getString('userId');
+
+  if (userId == null) return 'Unknown';
+
+  final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+  if (doc.exists) {
+    final data = doc.data();
+    return data?['username'] ?? 'Unknown';
+  }
+  return 'Unknown';
 }
 
 // Export PDF
@@ -190,7 +214,7 @@ Future<void> exportToPDF() async {
 }
 
   // UI Tampilan Products
-  void showProductsBox(String? textToedit, String? docId, Timestamp? time) {    
+  Future <void> showProductsBox(String? textToedit, String? docId, Timestamp? time) async {    
     showDialog(
       context: context,
       builder: (context) {
@@ -198,16 +222,25 @@ Future<void> exportToPDF() async {
           controller.text = textToedit;
         }
         if (docId != null) {
-          FirebaseFirestore.instance.collection('products').doc(docId).get().then((doc) {
+            FirebaseFirestore.instance.collection('products').doc(docId).get().then((doc) {
             final data = doc.data();
             if (data != null) {
               skuController.text = data['sku'] ?? ''; 
-              quantityController.text = data['quantity']?.toString() ?? ''; 
-              priceController.text = data['price']?.toString() ?? ''; 
+              quantityController.text = data['quantity']?.toString() ?? '';
+
+              final rawPrice = data['price'];
+              if (rawPrice != null) {
+                final priceValue = rawPrice is int ? rawPrice : (rawPrice as double);
+                priceController.text = priceValue % 1 == 0
+                ? priceValue.toInt().toString()
+                : priceValue.toString();
+              }
+
               selectedCategory = data['category'] ?? selectedCategory;
               imageUrlController.text = data['imageUrl'] ?? '';
+              }
             }
-          });
+          );
         }
 
         // UI add product button
@@ -317,13 +350,15 @@ Future<void> exportToPDF() async {
                     }
 
                     if (docId == null) {
-                      await firestoreServices.addProduct(name, quantity, price, sku, selectedCategory, imageUrl);
+                      final byId = await getCurrentUserName();
+                      await firestoreServices.addProduct(name, quantity, price, sku, selectedCategory, imageUrl, byId);
                     } else {
                       final docSnapshot = await FirebaseFirestore.instance.collection('products').doc(docId).get();
                       final oldData = docSnapshot.data() as Map<String, dynamic>;
                       final oldCategory = oldData['category'] ?? selectedCategory;
+                      final byId = await getCurrentUserName();
 
-                      await firestoreServices.updateProducts(docId, name, quantity, price, sku,oldCategory, selectedCategory, imageUrl, time!);
+                      await firestoreServices.updateProducts(docId, name, quantity, price, sku,oldCategory, selectedCategory, imageUrl, byId ,time!);
                     }
                     if(!context.mounted) return;
                     Navigator.pop(context);
@@ -340,11 +375,12 @@ Future<void> exportToPDF() async {
                     final docSnapshot = await FirebaseFirestore.instance.collection('products').doc(docId).get();
                     final oldData = docSnapshot.data() as Map<String, dynamic>;
                     final oldCategory = oldData['category'] ?? selectedCategory;
+                    final byId = await getCurrentUserName();
 
                     if(!context.mounted) return;
                     Navigator.pop(context);
                     
-                    await firestoreServices.updateProducts(docId, product, quantity, price, sku, oldCategory, selectedCategory, imageUrl, time!);
+                    await firestoreServices.updateProducts(docId, product, quantity, price, sku, oldCategory, selectedCategory, imageUrl, byId ,time!);
                   }
                   controller.clear();
                   quantityController.clear();
@@ -367,6 +403,7 @@ Future<void> exportToPDF() async {
   @override
   void initState() {
     super.initState();
+    FirestoreServices().updateUnknownHistroryEntries();
 // Role + Category Function
     firestoreServices.getCategories().listen((catList) {
       setState(() {
@@ -592,13 +629,95 @@ Future<void> exportToPDF() async {
                                   onPressed: () {
                                     final imageUrl = data['imageUrl'] ?? '';
                                     if (imageUrl.isNotEmpty) {
+
+                                      final outerContext = context;
                                       showDialog(
                                         context: context,
-                                        builder: (context) => AlertDialog(
-                                          title:  Text('Item Image'),
-                                          content:  Image.network(imageUrl, height: 200),
-                                        ),     
-                                      );
+                                        builder: (context) {
+                                          return AlertDialog(
+                                            title: Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Text('Item Image'),
+                                                IconButton(
+                                                  icon: Icon(Icons.delete, size: 20, color: Colors.red),
+                                                  tooltip: 'Hapus Gambar',
+                                                  onPressed: () async {
+                                                    Navigator.pop(context);
+
+                                                    showDialog(
+                                                      context: outerContext,
+                                                      barrierDismissible: false, 
+                                                      builder: (context) => const AlertDialog(
+                                                        content: Row(
+                                                          children: [
+                                                            CircularProgressIndicator(color: Colors.purple),
+                                                            SizedBox(width: 20),
+                                                            Text('Menghapus gambar...')
+                                                          ],
+                                                        ),
+                                                      )
+                                                    );
+
+                                                    try {
+                                                      final uri = Uri.parse(imageUrl);
+                                                      final segments = uri.pathSegments;
+                                                      final publicId = segments.last.split('.').first;
+
+                                                      await deleteFromCloudinary(publicId);
+
+                                                      // Hapus dari Firestore juga
+                                                      await FirebaseFirestore.instance.collection('products').doc(docId).update({
+                                                        'imageUrl': ''
+                                                      });
+
+                                                      if (!outerContext.mounted) return;
+
+                                                      Navigator.pop(outerContext);
+                                                      ScaffoldMessenger.of(outerContext).showSnackBar(
+                                                        SnackBar(content: Text("Gambar berhasil dihapus"))
+                                                      );
+                                                    } catch (e) {
+                                                      Navigator.pop(outerContext);
+                                                      ScaffoldMessenger.of(outerContext).showSnackBar(
+                                                        SnackBar(content: Text('Gagal menghapus gambar: $e'))
+                                                      );
+                                                    }
+                                                  },
+                                                ),
+                                              ],
+                                            ),
+                                          
+                                          // Loading Image
+                                            content: SizedBox(
+                                            width: 300,
+                                            height: 200,
+                                            child: Stack(
+                                              alignment: Alignment.center,
+                                              children: [
+                                                Center(
+                                                  child: CircularProgressIndicator(
+                                                    color: Colors.purple,
+                                                  ),
+                                                ),
+                                                Positioned.fill(
+                                                  child: Image.network(
+                                                  imageUrl,
+                                                  fit: BoxFit.contain,
+                                                  loadingBuilder: (context, child, loadingProgress) {
+                                                    if(loadingProgress == null) return child;
+                                                    return const SizedBox();
+                                                  },
+                                                    errorBuilder: (context, error, stackTrace) =>
+                                                      Center(child: Text('Gagal memuat gambar')),
+                                                  ),
+                                                )
+                                              ],
+                                            ),
+                                          )
+                                        );
+                                      },
+                                    );
                                     } else {
                                       showDialog(
                                         context: context, 
@@ -634,20 +753,24 @@ Future<void> exportToPDF() async {
                                                 },
                                                 child: Text("Cancel"),
                                               ),
-                                              TextButton(onPressed: ()  {
+                                              TextButton(onPressed: () async {
                                                 final qtytoDelete = int.tryParse(deleteQtyController.text.trim()) ?? 0;
                                                 if (qtytoDelete > 0 && qtytoDelete <= quantity) {
                                                   final newQty = quantity - qtytoDelete;
                                                   final imageUrl = data['imageUrl']?.toString() ?? '';
+                                                  final totalPrice = qtytoDelete * price;
+                                                  final byId = await getCurrentUserName();
                                                   
-                                                  // final totalPrice = qtytoDelete * price;            
                                                   if (newQty > 0) {
-                                                    firestoreServices.updateProducts(docId, product, newQty, price, sku, selectedCategory, selectedCategory,  imageUrl, time);
+                                                    await firestoreServices.addHistory(product, 'delete', qtytoDelete, sku, selectedCategory, imageUrl,byId ,totalPrice: totalPrice);         
+                                                    await firestoreServices.updateProducts(docId, product, newQty, price, sku, selectedCategory, selectedCategory, imageUrl,byId ,time);
                                                   } else {
-                                                    Future.delayed(Duration(milliseconds: 100));
-                                                    firestoreServices.deleteProduct(docId);
+                                                    await firestoreServices.addHistory(product, 'delete', qtytoDelete, sku, selectedCategory, imageUrl,byId ,totalPrice: totalPrice);         
+                                                    await firestoreServices.addHistory(product, 'update', 0, sku, selectedCategory, imageUrl, byId ,totalPrice: 0);
+                                                    await firestoreServices.deleteProduct(docId);
+                                                    
                                                   }
-                                                  // firestoreServices.addHistory(product, 'delete', qtytoDelete, sku, selectedCategory, totalPrice: totalPrice);
+                                                  if(!context.mounted)return;
                                                   Navigator.pop(context);
                                                 }
                                               },

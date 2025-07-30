@@ -1,9 +1,14 @@
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_2/category_model.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FirestoreServices {
   final CollectionReference? categories =
@@ -16,6 +21,58 @@ class FirestoreServices {
     FirebaseFirestore.instance.collection('sensors');
   final CollectionReference? loggers =
     FirebaseFirestore.instance.collection('loggers');
+
+
+  // Get User
+  Future<String> _getCurrentUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('userId');
+    
+    if(userId == null) return 'Unknown';
+
+    final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+    if (doc.exists) {
+      final data = doc.data();
+      return data?['username'] ?? 'Unknown';
+    }
+
+    return 'Unknown';
+  }
+
+  // Update Latest User History
+  Future<void> updateUnknownHistroryEntries() async {
+    final currentUsername = await _getCurrentUser();
+    final historyCollection = FirebaseFirestore.instance.collection('history');
+    final querySnapshot = await historyCollection.where('by', isEqualTo: 'Unknown').get();
+
+    for (final doc in querySnapshot.docs) {
+      await doc.reference.update({'by': currentUsername});
+    }
+  }
+
+  // Image compresser
+  Future<File?> compressImage(File file) async {
+    final dir = await getTemporaryDirectory();
+    final targetPath = path.join(
+      dir.path,
+      'compressed_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+
+    final xfile = await FlutterImageCompress.compressAndGetFile(
+      file.absolute.path,
+      targetPath,
+      quality: 70,
+    );
+
+    if(xfile != null) {
+      final compressedFile =  File(xfile.path);
+      // print('Compressed file size: ${await compressedFile.length()} bytes');
+      return compressedFile;
+    } else {
+      // print('compression failed!');
+      return null;
+    }
+  }
 
 // To get the public id from secure url
   String? _extractPublicIdFromUrl(String url) {
@@ -131,8 +188,10 @@ Future<void> _deleteFromCloudinary(String publicId) async {
         final sku = data['sku'] ?? '';
         final category = data['category'] ?? '';
         final imageUrl = data['imageUrl'] ?? '';
+        final user = await _getCurrentUser();
 
-        await addHistory(product, 'delete', quantity, sku, category, imageUrl, totalPrice: quantity * price);
+
+        await addHistory(product, 'delete', quantity, sku, category, imageUrl, user , totalPrice: quantity * price);
         batch.delete(doc.reference);
       }
       for (final doc in subProductsQuery.docs) {
@@ -143,20 +202,22 @@ Future<void> _deleteFromCloudinary(String publicId) async {
   }
 
   // adding Product
-  Future<void> addProduct(String name, int quantity, double price, String sku, String category, String imageUrl) async{
+  Future<void> addProduct(String name, int quantity, double price, String sku, String category, String imageUrl, String byUser) async{
     final data = {
       'product':name,
       'quantity': quantity,
       'price': price,
       'sku': sku,
       'category': category,
-      if (imageUrl.isNotEmpty) 'imageUrl' : imageUrl,  
+      if (imageUrl.isNotEmpty) 'imageUrl' : imageUrl,
+      'by' : byUser, 
       'timestamp': FieldValue.serverTimestamp()
     };
     
     // add to collections
     final docRef = await products!.add(data);
     final categoryRef = FirebaseFirestore.instance.collection('categories').doc(category);
+    final user = await _getCurrentUser();
     await categoryRef.collection('products').add({
       ...data,
       'docId' : docRef.id,
@@ -170,6 +231,7 @@ Future<void> _deleteFromCloudinary(String publicId) async {
       sku,
       category,
       imageUrl,
+      user,
       totalPrice: quantity * price,
     );    
   }
@@ -190,14 +252,17 @@ Future<void> _deleteFromCloudinary(String publicId) async {
   }
 
   // update Product
-  Future<void> updateProducts(String docId, String newProduct, int quantity, double price, String sku, String oldCategory, String newCategory,String imageUrl, Timestamp time) async{
+  Future<void> updateProducts(String docId, String newProduct, int quantity, double price, String sku, String oldCategory, String newCategory,String imageUrl,String byUser ,Timestamp time) async{
+    final user = await _getCurrentUser();
+    
     await products!.doc(docId).update({
       'product':newProduct,
       'quantity':quantity,
       'price':price,
       'sku': sku,
       'category': newCategory,
-      if (imageUrl.isNotEmpty) 'imageUrl' : imageUrl,  
+      if (imageUrl.isNotEmpty) 'imageUrl' : imageUrl,
+      'by' : user,
       'timestamp': time});
 
       final newData = {
@@ -207,6 +272,7 @@ Future<void> _deleteFromCloudinary(String publicId) async {
       'sku': sku,
       'imageUrl' : imageUrl,
       'docId' : docId,
+      'by' : user,
       'timestamp': time
       };
 
@@ -247,13 +313,14 @@ Future<void> _deleteFromCloudinary(String publicId) async {
         sku,
         newCategory,
         imageUrl,
+        user,
         totalPrice: quantity * price,  
       );
     }
   }
 
   // Update Product in Category
-  Future<void> updateProductInCategorySubcollection(String docId, String sku, String product, String category, int quantity, double price, String imageUrl) async {
+  Future<void> updateProductInCategorySubcollection(String docId, String sku, String product, String category, int quantity, double price, String imageUrl, String byUser) async {
     final subProducts = await categories!
     .doc(category)
     .collection('products')
@@ -277,29 +344,21 @@ Future<void> _deleteFromCloudinary(String publicId) async {
     final data = docSnapshot.data() as Map<String, dynamic>?;
 
     if (data != null) {
-      final product = data['product'] ?? '';
-      final quantity = data['quantity'] ?? 0;
-      final price = (data['price'] as num?)?.toDouble() ?? 0.0;
-      final sku = data['sku'] ?? '';
       final category = data['category'] ?? '';
       final imageUrl = data['imageUrl'] ?? '';
+      final product = data['product'] ?? '';
+      final quantity = data['quantity'] ?? '';
+      final price = (data['price'] as num?)?.toDouble() ?? 0.0;
+      final sku = data['sku'] ?? '';
+
+      final user = await _getCurrentUser();
       
-      if (imageUrl != null && imageUrl.isNotEmpty) {
+      if (imageUrl.isNotEmpty) {
         final publicId = _extractPublicIdFromUrl(imageUrl);
         if (publicId != null) {
           await _deleteFromCloudinary(publicId);
         }
       }
-
-      await addHistory(
-        product,
-        'delete',
-        quantity,
-        sku,
-        category,
-        imageUrl,
-        totalPrice: quantity * price,
-      );
 
       final categoryRef = FirebaseFirestore.instance.collection('categories').doc(category);
       final subProducts = await categoryRef
@@ -309,13 +368,16 @@ Future<void> _deleteFromCloudinary(String publicId) async {
       for (var doc in subProducts.docs) {
         await doc.reference.delete();
       }
+
+      // add to history
+      await addHistory(product, 'delete', quantity, sku, category, imageUrl, user, totalPrice: quantity * price);
     }
     // delete all products
     await products!.doc(docId).delete();
   }
 
   // History
-  Future<void> addHistory(String items, String action ,int quantity, String sku, String category, String imageUrl, {double? totalPrice}) async {
+  Future<void> addHistory(String items, String action ,int quantity, String sku, String category, String imageUrl, String byUser ,{double? totalPrice} ) async {
     await FirebaseFirestore.instance.collection('history').add({
       'items':items,
       'quantity':quantity,
@@ -325,6 +387,7 @@ Future<void> _deleteFromCloudinary(String publicId) async {
       'imageUrl' : imageUrl.isNotEmpty ? imageUrl : null,
       'total_price': totalPrice,
       'timestamp':Timestamp.now(),
+      'by': byUser,
     });
   }
 
