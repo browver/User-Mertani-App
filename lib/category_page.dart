@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_2/category_model.dart';
-import 'package:flutter_application_2/firebase_services.dart';
-import 'package:flutter_application_2/product_by_category.dart';
+import 'package:user_app/category_model.dart';
+import 'package:user_app/firebase_services.dart';
+import 'package:user_app/product_by_category.dart';
 import 'package:google_fonts/google_fonts.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
 

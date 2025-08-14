@@ -6,9 +6,10 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_application_2/category_model.dart';
+import 'package:user_app/category_model.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'secrets.dart';
 
 class FirestoreServices {
   final CollectionReference? categories =
@@ -24,7 +25,8 @@ class FirestoreServices {
 
 
   // Get User
-  Future<String> _getCurrentUser() async {
+  static Future <String> getCurrentUsername() async {
+    try{
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getString('userId');
     
@@ -37,11 +39,24 @@ class FirestoreServices {
     }
 
     return 'Unknown';
+  } catch(e) {
+    return 'Unknown';
+  }
+  
+  }
+
+  // Realtime update borrowed
+  Stream<int> getTotalBorrowedByStatusStream(String status){
+    return FirebaseFirestore.instance
+      .collection('borrowed')
+      .where('status', isEqualTo: status)
+      .snapshots()
+      .map((snapshot) => snapshot.docs.length);
   }
 
   // Update Latest User History
   Future<void> updateUnknownHistroryEntries() async {
-    final currentUsername = await _getCurrentUser();
+    final currentUsername = await getCurrentUsername();
     final historyCollection = FirebaseFirestore.instance.collection('history');
     final querySnapshot = await historyCollection.where('by', isEqualTo: 'Unknown').get();
 
@@ -90,8 +105,8 @@ class FirestoreServices {
 // Delete Image
 Future<void> _deleteFromCloudinary(String publicId) async {
   const cloudName ='dopauoogt';
-  const apiKey = '424485965836465';
-  const apiSecret = 'ARSRXe6QooG9i74i1i9R6vqia_M';
+  const apiKey = myapikey;
+  const apiSecret = myServiceKey;
   
   final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
   final signatureRaw ='public_id=$publicId&timestamp=$timestamp$apiSecret';
@@ -188,7 +203,7 @@ Future<void> _deleteFromCloudinary(String publicId) async {
         final sku = data['sku'] ?? '';
         final category = data['category'] ?? '';
         final imageUrl = data['imageUrl'] ?? '';
-        final user = await _getCurrentUser();
+        final user = await getCurrentUsername();
 
 
         await addHistory(product, 'delete', quantity, sku, category, imageUrl, user , totalPrice: quantity * price);
@@ -217,7 +232,7 @@ Future<void> _deleteFromCloudinary(String publicId) async {
     // add to collections
     final docRef = await products!.add(data);
     final categoryRef = FirebaseFirestore.instance.collection('categories').doc(category);
-    final user = await _getCurrentUser();
+    final user = await getCurrentUsername();
     await categoryRef.collection('products').add({
       ...data,
       'docId' : docRef.id,
@@ -253,7 +268,7 @@ Future<void> _deleteFromCloudinary(String publicId) async {
 
   // update Product
   Future<void> updateProducts(String docId, String newProduct, int quantity, double price, String sku, String oldCategory, String newCategory,String imageUrl,String byUser ,Timestamp time) async{
-    final user = await _getCurrentUser();
+    final user = await getCurrentUsername();
     
     await products!.doc(docId).update({
       'product':newProduct,
@@ -338,6 +353,113 @@ Future<void> _deleteFromCloudinary(String publicId) async {
     }
   }
 
+  // Borrowed Product
+  Future<void> borrowProduct({
+    required String docId,
+    required int borrowQuantity,
+  }) async {
+    final docSnapshot = await products!.doc(docId).get();
+    final data = docSnapshot.data() as Map<String, dynamic>?;
+
+    if(data == null) return;
+
+    final currentQuantity = data['quantity'] ?? 0;
+    final newQuantity = currentQuantity - borrowQuantity;
+
+    if(newQuantity <= 0) {
+      throw Exception('Stok tidak cukup untuk dipinjam');
+    }
+
+    final user = await getCurrentUsername();
+
+    // Update quantity
+    await products!.doc(docId).update({
+      'quantity' : newQuantity,
+      'by' : user,
+      'timestamp' : Timestamp.now(),
+    });
+
+    final product = data['product'] ?? '';
+    final sku = data['sku'] ?? '';
+    final category = data['category'] ?? '';
+    final imageUrl = data['imageUrl'] ?? '';
+    final price = (data['price'] as num?)?.toDouble() ?? 0.0;
+
+    // add to history
+    await addHistory(
+      product, 
+      'borrow', 
+      borrowQuantity, 
+      sku, 
+      category, 
+      imageUrl, 
+      user,
+      totalPrice: price * borrowQuantity
+    );
+
+    await FirebaseFirestore.instance.collection('borrowed').add({
+      'product' : product,
+      'sku' : sku,
+      'category' : category,
+      'quantity' : borrowQuantity,
+      'imageUrl' : imageUrl,
+      'by' : user,
+      'borrowed at' : Timestamp.now()
+    });
+  }
+
+  // Return Product
+  Future<void> returnProduct({
+    required String docId,
+    required int returnQuantity,
+  }) async {
+    final docSnapshot = await products!.doc(docId).get();
+    final data = docSnapshot.data() as Map<String, dynamic>?;
+    
+    if(data == null) return;
+
+    final currentQuantity = data['quantity'] ?? 0;
+    final newQuantity = currentQuantity + returnQuantity;
+
+    final user = await getCurrentUsername();
+    final product = data['product'] ?? '';
+    final sku = data['sku'] ?? '';
+    final category = data['category'] ?? '';
+    final imageUrl = data['imageUrl'] ?? '';
+    final price = (data['price'] as num?)?.toDouble() ?? 0.0;
+
+    await products!.doc(docId).update({
+      'quantity' : newQuantity,
+      'by' : user,
+      'timestamp' : Timestamp.now()
+    });
+
+    final subProductsSnapshot = await categories!
+      .doc(category)
+      .collection('products')
+      .where('docId', isEqualTo: docId)
+      .get();
+    
+    for(final doc in subProductsSnapshot.docs) {
+      await doc.reference.update({
+        'quantity' : newQuantity,
+        'by' : user,
+        'timestamp' : Timestamp.now()
+      });
+    }
+
+    await addHistory(
+      product, 
+      'return', 
+      returnQuantity, 
+      sku, 
+      category, 
+      imageUrl, 
+      user,
+      totalPrice: price * returnQuantity
+    );
+  }
+
   // delete Product
   Future<void> deleteProduct(String docId) async {
     final docSnapshot = await products!.doc(docId).get();
@@ -351,7 +473,7 @@ Future<void> _deleteFromCloudinary(String publicId) async {
       final price = (data['price'] as num?)?.toDouble() ?? 0.0;
       final sku = data['sku'] ?? '';
 
-      final user = await _getCurrentUser();
+      final user = await getCurrentUsername();
       
       if (imageUrl.isNotEmpty) {
         final publicId = _extractPublicIdFromUrl(imageUrl);

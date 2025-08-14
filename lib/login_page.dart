@@ -1,10 +1,10 @@
 // import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 // import 'package:firebase_auth/firebase_auth.dart';
-// import 'package:flutter_application_2/homepage.dart';
+// import 'package:User_App/homepage.dart';
 // import 'package:flutter_application_2/menu_dashboard.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_application_2/firebase_services.dart';
+import 'package:user_app/firebase_services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
@@ -90,10 +90,15 @@ Future<void> _handleLogin() async {
           _usernameController.clear();
           _passwordController.clear();
 
-        if (role == 'admin' || role == 'user') {
+        if (role == 'user') {
           Navigator.pushNamedAndRemoveUntil(context, '/homepage', (route) => false);
           return;
-        } else {
+        } 
+        else if (role == 'admin') {
+          Navigator.pushNamedAndRemoveUntil(context, '/userpage', (route) => false);
+          return;
+        } 
+        else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Pengguna tidak dikenali'), backgroundColor: Colors.red),
           );
@@ -128,94 +133,140 @@ Future<void> _handleLogin() async {
   }
 }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              Colors.orange, // Orange from your theme
-              Colors.orange,
-              Colors.white,
+              Color(0xFF2196F3), // Blue primary
+              Color(0xFF1976D2), // Blue darker
+              Color(0xFF0D47A1), // Blue darkest
             ],
-            stops: [0.0, 0.4, 1.0],
+            stops: [0.0, 0.6, 1.0],
           ),
         ),
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: 32.0),
+              padding: EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Header Section
+                  // Header Section 
                   Container(
-                    margin: EdgeInsets.only(bottom: 48.0),
+                    margin: EdgeInsets.only(bottom: 24.0), 
                     child: Column(
                       children: [
-                        // Logo with better styling
+                        // Logo Container 
                         Container(
-                          width: 100,
-                          height: 100,
+                          width: 80, 
+                          height: 80, 
                           decoration: BoxDecoration(
                             color: Colors.white,
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withAlpha(25),
-                                blurRadius: 20,
-                                offset: Offset(0, 10),
+                                color: Colors.black.withValues(alpha: 0.15),
+                                blurRadius: 20, 
+                                offset: Offset(0, 8), 
+                                spreadRadius: 1,
+                              ),
+                              BoxShadow(
+                                color: Colors.blue.withValues(alpha: 0.3),
+                                blurRadius: 30, 
+                                offset: Offset(0, 15), 
+                                spreadRadius: -3, 
                               ),
                             ],
                           ),
                           child: Hero(
-                            tag: 'mertani',
+                            tag: 'pinjam_barang_logo',
                             child: Padding(
-                              padding: EdgeInsets.all(20.0),
-                              child: Image.asset(
-                                'assets/icons/warehouse.png',
-                                fit: BoxFit.contain,
-                              ),
+                              padding: EdgeInsets.all(16.0), 
+                              child:
+                                Image.asset('assets/icons/warehouse.png',
+                                fit: BoxFit.contain),
                             ),
                           ),
                         ),
-                        SizedBox(height: 24.0),
-                        // Welcome Text
-                        Text(
-                          'Welcome Back!',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        SizedBox(height: 8.0),
-                        Text(
-                          'Be part of Nature Protect The Future',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.white,
+                        SizedBox(height: 20.0), 
+                        
+                        // App Title 
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 16), 
+                          child: Column(
+                            crossAxisAlignment : CrossAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Mertani Warehouse',
+                                textAlign : TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 28, 
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: -0.5,
+                                  shadows: [
+                                    Shadow(
+                                      offset: Offset(0, 2),
+                                      blurRadius: 8,
+                                      color: Colors.black.withValues(alpha: 0.3),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(height: 8.0), 
+                              Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 12, 
+                                  vertical: 6, 
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(16), 
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Text(
+                                  'Pinjam barang dengan Mudah',
+                                  style: TextStyle(
+                                    fontSize: 14, 
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
 
-                  // Login Form Card
+                  // Login Form Card 
                   Container(
-                    padding: EdgeInsets.all(32.0),
+                    width: double.infinity,
+                    padding: EdgeInsets.all(24.0), 
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(24.0),
+                      borderRadius: BorderRadius.circular(24.0), 
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withAlpha(25),
-                          blurRadius: 30,
-                          offset: Offset(0, 15),
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 25, 
+                          offset: Offset(0, 15), 
+                          spreadRadius: -3, 
+                        ),
+                        BoxShadow(
+                          color: Colors.blue.withValues(alpha: 0.15),
+                          blurRadius: 50,
+                          offset: Offset(0, 30), 
+                          spreadRadius: -15,
                         ),
                       ],
                     ),
@@ -224,129 +275,292 @@ Future<void> _handleLogin() async {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Username Field
-                          TextFormField(
-                            controller: _usernameController,
-                            decoration: InputDecoration(
-                              labelText: 'Username',
-                              prefixIcon: Icon(
-                                Icons.person_outline,
-                                color: Colors.orange,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16.0),
-                                borderSide: BorderSide(color: Colors.grey.shade300),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16.0),
-                                borderSide: BorderSide(
-                                  color: Colors.orange,
-                                  width: 2.0,
-                                ),
-                              ),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16.0,
-                                vertical: 16.0,
-                              ),
+                          // Login Title 
+                          Text(
+                            'Masuk ke Akun',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 20, 
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1976D2),
+                              letterSpacing: -0.5,
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your username';
-                              }
-                              return null;
-                            },
                           ),
-                          SizedBox(height: 20.0),
+                          SizedBox(height: 20.0), 
 
-                          // Password Field
-                          TextFormField(
-                            controller: _passwordController,
-                            obscureText: !_isPasswordVisible,
-                            decoration: InputDecoration(
-                              labelText: 'Password',
-                              prefixIcon: Icon(
-                                Icons.lock_outline,
-                                color: Colors.orange,
-                              ),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _isPasswordVisible
-                                      ? Icons.visibility
-                                      : Icons.visibility_off,
-                                  color: Colors.grey,
+                          // Username Field 
+                          Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14.0), 
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.blue.withValues(alpha: 0.08),
+                                  blurRadius: 6, 
+                                  offset: Offset(0, 3), 
                                 ),
-                                onPressed: () {
-                                  setState(() {
-                                    _isPasswordVisible = !_isPasswordVisible;
-                                  });
-                                },
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16.0),
-                                borderSide: BorderSide(color: Colors.grey.shade300),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16.0),
-                                borderSide: BorderSide(
-                                  color: Colors.orange,
-                                  width: 2.0,
-                                ),
-                              ),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16.0,
-                                vertical: 16.0,
-                              ),
+                              ],
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your password';
-                              }
-                              return null;
-                            },
+                            child: TextFormField(
+                              controller: _usernameController,
+                              decoration: InputDecoration(
+                                labelText: 'Username',
+                                labelStyle: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 14, 
+                                ),
+                                prefixIcon: Container(
+                                  padding: EdgeInsets.all(10), 
+                                  child: Icon(
+                                    Icons.person_outline_rounded,
+                                    color: Color(0xFF1976D2),
+                                    size: 20, 
+                                  ),
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey[50],
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14.0), 
+                                  borderSide: BorderSide(
+                                    color: Colors.grey.shade200,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14.0), 
+                                  borderSide: BorderSide(
+                                    color: Colors.grey.shade200,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14.0), 
+                                  borderSide: BorderSide(
+                                    color: Color(0xFF1976D2),
+                                    width: 2.5,
+                                  ),
+                                ),
+                                errorBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14.0), 
+                                  borderSide: BorderSide(
+                                    color: Colors.red,
+                                    width: 2.0,
+                                  ),
+                                ),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 14.0, 
+                                  vertical: 14.0, 
+                                ),
+                              ),
+                              style: TextStyle(
+                                fontSize: 15, 
+                                fontWeight: FontWeight.w500,
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Silakan masukkan username';
+                                }
+                                return null;
+                              },
+                            ),
                           ),
-                          SizedBox(height: 32.0),
+                          SizedBox(height: 18.0), 
 
-                          // Login Button
-                          SizedBox(
-                            height: 56.0,
+                          // Password Field 
+                          Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14.0), 
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.blue.withValues(alpha: 0.08),
+                                  blurRadius: 6, 
+                                  offset: Offset(0, 3), 
+                                ),
+                              ],
+                            ),
+                            child: TextFormField(
+                              controller: _passwordController,
+                              obscureText: !_isPasswordVisible,
+                              decoration: InputDecoration(
+                                labelText: 'Password',
+                                labelStyle: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 14, 
+                                ),
+                                prefixIcon: Container(
+                                  padding: EdgeInsets.all(10), 
+                                  child: Icon(
+                                    Icons.lock_outline_rounded,
+                                    color: Color(0xFF1976D2),
+                                    size: 20, 
+                                  ),
+                                ),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _isPasswordVisible
+                                        ? Icons.visibility_rounded
+                                        : Icons.visibility_off_rounded,
+                                    color: Colors.grey[600],
+                                    size: 20, 
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _isPasswordVisible = !_isPasswordVisible;
+                                    });
+                                  },
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey[50],
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14.0), 
+                                  borderSide: BorderSide(
+                                    color: Colors.grey.shade200,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14.0), 
+                                  borderSide: BorderSide(
+                                    color: Colors.grey.shade200,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14.0), 
+                                  borderSide: BorderSide(
+                                    color: Color(0xFF1976D2),
+                                    width: 2.5,
+                                  ),
+                                ),
+                                errorBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14.0), 
+                                  borderSide: BorderSide(
+                                    color: Colors.red,
+                                    width: 2.0,
+                                  ),
+                                ),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 14.0, 
+                                  vertical: 14.0, 
+                                ),
+                              ),
+                              style: TextStyle(
+                                fontSize: 15, 
+                                fontWeight: FontWeight.w500,
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Silakan masukkan password';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          SizedBox(height: 24.0), 
+
+                          // Login Button 
+                          Container(
+                            height: 48.0, 
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14.0), 
+                              gradient: LinearGradient(
+                                colors: [
+                                  Color(0xFF2196F3),
+                                  Color(0xFF1976D2),
+                                ],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Color(0xFF1976D2).withValues(alpha: 0.4),
+                                  blurRadius: 12, 
+                                  offset: Offset(0, 6), 
+                                  spreadRadius: 0,
+                                ),
+                              ],
+                            ),
                             child: ElevatedButton(
                               onPressed: _isLoading ? null : _handleLogin,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.orange,
+                                backgroundColor: Colors.transparent,
                                 foregroundColor: Colors.white,
-                                elevation: 8,
-                                shadowColor: Colors.orange.withAlpha(25),
+                                elevation: 0,
+                                shadowColor: Colors.transparent,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16.0),
+                                  borderRadius: BorderRadius.circular(14.0), 
                                 ),
                               ),
                               child: _isLoading
                                   ? SizedBox(
-                                      width: 24,
-                                      height: 24,
+                                      width: 20, 
+                                      height: 20, 
                                       child: CircularProgressIndicator(
                                         color: Colors.white,
-                                        strokeWidth: 2,
+                                        strokeWidth: 2.5,
                                       ),
                                     )
-                                  : Text(
-                                      'Log In',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                  : Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.login_rounded,
+                                          size: 18, 
+                                        ),
+                                        SizedBox(width: 6), 
+                                        Text(
+                                          'Masuk',
+                                          style: TextStyle(
+                                            fontSize: 16, 
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                             ),
                           ),
-                          SizedBox(height: 20.0)
+                          SizedBox(height: 16.0), 
                         ],
                       ),
                     ),
                   ),
-                  SizedBox(height: 32.0),
+                  SizedBox(height: 24.0), 
 
-                  // Footer
-
+                  // Footer 
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 16), 
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.security_rounded,
+                              color: Colors.white.withValues(alpha: 0.8),
+                              size: 14, 
+                            ),
+                            SizedBox(width: 6), 
+                            Text(
+                              'Encrypted',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 12, 
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8), 
+                        Text(
+                          '© 2024 Mertani App',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 11, 
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),

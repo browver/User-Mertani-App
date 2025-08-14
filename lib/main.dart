@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter_application_2/category_page.dart';
-import 'package:flutter_application_2/firebase_options.dart';
-// import 'package:flutter_application_2/menu_dashboard.dart';
-import 'package:flutter_application_2/login_page.dart';
-import 'package:flutter_application_2/menu_dashboard.dart';
+import 'category_page.dart';
+import 'firebase_options.dart';
+// import 'menu_dashboard.dart';
+import 'login_page.dart';
+import 'menu_dashboard.dart';
+import 'user_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 // import 'homepage.dart';
 
@@ -28,12 +29,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Mertani Warehouse',
+      title: 'Mertani Warehouse User',
 
       routes: {
         '/login': (context) => const LoginPage(),
         '/homepage': (context) => const MyHomePage(),
         '/category' : (context) => const CategoryPage(),
+        '/userpage' : (context) => const UserPage()
       },
 
 

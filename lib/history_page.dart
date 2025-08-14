@@ -11,38 +11,96 @@ class HistoryPage extends StatefulWidget {
 }
 
 class _HistoryPageState extends State<HistoryPage> {
-  String filter = 'all'; // 'all', 'weekly', 'monthly'
+  String actionFilter = 'all';
   String searchQuery = '';
+  String? role;
 
   String formatCurrency(num value) {
     final formatter = NumberFormat.currency(locale: 'id_ID', symbol: '', decimalDigits: 0);
     return 'Rp ${formatter.format(value)}';
   }
 
-// Weekly or Monthly Options 
-  DateTime? getFilterDate() {
-    final now = DateTime.now();
-    if (filter == 'weekly') return now.subtract(const Duration(days: 7));
-    if (filter == 'monthly') return now.subtract(const Duration(days: 30));
-    return null;
+  Color _getActionColor(String action) {
+    switch (action) {
+      case 'add':
+        return Colors.green[700]!;
+      case 'borrow':
+        return Colors.blue[700]!;
+      case 'return':
+        return Colors.purple[700]!;
+      case 'delete':
+        return Colors.red[700]!;
+      default:
+        return Colors.orange[700]!;
+    }
   }
 
-// Delete alert UI
+  IconData _getActionIcon(String action) {
+    switch (action) {
+      case 'add':
+        return Icons.add_circle;
+      case 'borrow':
+        return Icons.inventory;
+      case 'return':
+        return Icons.check_circle;
+      case 'delete':
+        return Icons.delete_outline;
+      default:
+        return Icons.edit_outlined;
+    }
+  }
+
+  String _getActionText(String action) {
+    switch (action) {
+      case 'add':
+        return 'Added';
+      case 'delete':
+        return 'Deleted';
+      case 'update':
+        return 'Updated';
+      case 'borrow':
+        return 'Borrowed';
+      case 'return':
+        return 'Returned';
+      default:
+        return 'Unknown';
+    }
+  }
+
   Future<void> _confirmAndDeleteHistory() async {
     if (!mounted) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Hapus Semua Riwayat?"),
-        content: const Text("Ini akan menghapus semua history transaksi."),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          "Hapus Semua Riwayat?",
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          "Ini akan menghapus semua history transaksi.",
+          style: GoogleFonts.poppins(),
+        ),
         actions: [
           TextButton(
-            child: const Text("Batal"),
+            child: Text(
+              "Batal",
+              style: GoogleFonts.poppins(color: Colors.grey[600]),
+            ),
             onPressed: () => Navigator.of(ctx).pop(false),
           ),
-          TextButton(
-            child: const Text("Hapus", style: TextStyle(color: Colors.red)),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red[600],
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(
+              "Hapus",
+              style: GoogleFonts.poppins(color: Colors.white),
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
           ),
         ],
@@ -63,70 +121,132 @@ class _HistoryPageState extends State<HistoryPage> {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Semua history berhasil dihapus")),
+      SnackBar(
+        content: Text(
+          "Semua history berhasil dihapus",
+          style: GoogleFonts.poppins(color: Colors.white),
+        ),
+        backgroundColor: Colors.green[600],
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
     );
   }
 
-// Delete All History Button
   @override
   Widget build(BuildContext context) {
-    final filterDate = getFilterDate();
-
     return Scaffold(
-      backgroundColor: Colors.grey[200],
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        backgroundColor: Colors.orange[500],
+        elevation: 0,
+        backgroundColor: Colors.blue[700],
+        foregroundColor: Colors.white,
         centerTitle: true,
-        title: Text('Transaction History', style: GoogleFonts.alexandria()),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.delete, color: Colors.red[600]),
-            tooltip: "Delete all history",
-            onPressed: _confirmAndDeleteHistory,
+        title: Text(
+          'Riwayat Transaksi',
+          style: GoogleFonts.poppins(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
           ),
+        ),
+        actions: [
+          if (role == 'admin')
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              child: IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red[600],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.delete_sweep, color: Colors.white, size: 20),
+                ),
+                tooltip: "Delete all history",
+                onPressed: _confirmAndDeleteHistory,
+              ),
+            ),
         ],
       ),
-
-      // Search Products History
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column( 
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // Header with search and filter
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.all(16),
+            child: Column(
               children: [
-                TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Product name..',
-                    prefixIcon: const Icon(Icons.search),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), 
+                // Search bar
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey[300]!),
                   ),
-                  onChanged: (value) { 
-                    setState(() {
-                      searchQuery = value.toLowerCase();
-                    });
-                  },
-                ),
-                const SizedBox(height: 12), 
-                Row(
-                  children: [
-                    const Text("Filter:  "),
-                    DropdownButton<String>(
-                      value: filter,
-                      items: const [
-                        DropdownMenuItem(value: 'all', child: Text("All")),
-                        DropdownMenuItem(value: 'weekly', child: Text("Weekly")),
-                        DropdownMenuItem(value: 'monthly', child: Text("Monthly")),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) setState(() => filter = value);
-                      },
+                  child: TextField(
+                    style: GoogleFonts.poppins(),
+                    decoration: InputDecoration(
+                      hintText: 'Cari produk...',
+                      hintStyle: GoogleFonts.poppins(color: Colors.grey[500]),
+                      prefixIcon: Icon(Icons.search, color: Colors.blue[600]),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     ),
-                  ],
+                    onChanged: (value) {
+                      setState(() {
+                        searchQuery = value.toLowerCase();
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Filter dropdown
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.filter_list, color: Colors.blue[600], size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        "Filter:",
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: actionFilter,
+                            style: GoogleFonts.poppins(color: Colors.grey[800]),
+                            items: const [
+                              DropdownMenuItem(value: 'all', child: Text("Semua")),
+                              DropdownMenuItem(value: 'add', child: Text("Tambah")),
+                              DropdownMenuItem(value: 'update', child: Text("Update")),
+                              DropdownMenuItem(value: 'delete', child: Text("Hapus")),
+                              DropdownMenuItem(value: 'borrow', child: Text("Pinjam")),
+                              DropdownMenuItem(value: 'return', child: Text("Kembali")),
+                            ],
+                            onChanged: (value) {
+                              if (value != null) setState(() => actionFilter = value);
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
-            ), 
+            ),
           ),
+          // History list
           Expanded(
             child: StreamBuilder(
               stream: FirebaseFirestore.instance
@@ -134,89 +254,240 @@ class _HistoryPageState extends State<HistoryPage> {
                   .orderBy('timestamp', descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                // Search Filter change
-                final allDocs = snapshot.data!.docs;
-                final filteredDocs = allDocs.where((doc) {
-                        final data = doc.data();
-                        final ts = (doc['timestamp'] as Timestamp).toDate();
-                        final productName = (data['items'] ?? '').toString().toLowerCase();
-
-                        final matchesSearch = productName.contains(searchQuery);
-                        final matchesFilter = filterDate == null || ts.isAfter(filterDate);
-                        return matchesSearch && matchesFilter;
-                      }).toList();
-
-                if (filteredDocs.isEmpty) {
-                  return const Center(child: Text("Tidak ada transaksi."));
+                if (!snapshot.hasData) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: Colors.blue[600]),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Memuat data...',
+                          style: GoogleFonts.poppins(color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  );
                 }
 
-                final total = filteredDocs
-                    .where((doc) => doc['action'] == 'delete')
-                    .fold<num>(0, (accumulator, doc) => accumulator + (doc['total_price'] ?? 0));
+                final allDocs = snapshot.data!.docs;
+                final filteredDocs = allDocs.where((doc) {
+                  final data = doc.data();
+                  final productName = (data['items'] ?? '').toString().toLowerCase();
+                  final action = data['action'];
 
-                return Column(
-                  children: [
-                    if (filter != 'all')
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          "Total Sales: ${formatCurrency(total)}",
-                          style: GoogleFonts.alexandria(fontSize: 16, fontWeight: FontWeight.bold),
+                  final matchesSearch = productName.contains(searchQuery);
+                  final matchesFilter = actionFilter == 'all' || action == actionFilter;
+                  return matchesSearch && matchesFilter;
+                }).toList();
+
+                if (filteredDocs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.history,
+                          size: 64,
+                          color: Colors.grey[400],
                         ),
+                        const SizedBox(height: 16),
+                        Text(
+                          "Tidak ada transaksi",
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Belum ada aktivitas yang tercatat",
+                          style: GoogleFonts.poppins(
+                            color: Colors.grey[500],
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filteredDocs.length,
+                  itemBuilder: (context, index) {
+                    final data = filteredDocs[index].data();
+                    final product = data['items'] ?? '';
+                    final action = data['action'] ?? '';
+                    final quantity = data['quantity'] ?? 0;
+                    final totalPrice = data['total_price'];
+                    final timestamp = (data['timestamp'] as Timestamp).toDate();
+                    final user = data['by'] ?? 'Unknown';
+
+                    final actionText = _getActionText(action);
+                    final actionColor = _getActionColor(action);
+                    final actionIcon = _getActionIcon(action);
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: filteredDocs.length,
-                        itemBuilder: (context, index) {
-                          final data = filteredDocs[index].data();
-                          final product = data['items'] ?? '';
-                          final action = data['action'] ?? '';
-                          final quantity = data['quantity'] ?? 0;
-                          final totalPrice = data['total_price'];
-                          final timestamp = (data['timestamp'] as Timestamp).toDate();
-                          final user = data['by'] ?? 'Unknown';
-
-                          String actionText = action == 'delete'
-                              ? 'Deleted'
-                              : action == 'add'
-                                  ? 'Added'
-                                  : 'Updated';
-
-                          // Total Price
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                            child: ListTile(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            // Action icon
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: actionColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: actionColor.withValues(alpha: 0.2),
+                                  width: 1,
+                                ),
                               ),
-                              tileColor: Colors.white,
-                              title: Text(product, style: GoogleFonts.alexandria(fontSize: 18, fontWeight: FontWeight.bold)),
-                              subtitle: Text(
-                                "${quantity == 0 && actionText == 'updated' ? 'Produk habis (update)' : '$actionText - $quantity unit'}\n"
-                                "Total: ${totalPrice != null ? formatCurrency(totalPrice) : "-"}\n"
-                                "${DateFormat('dd MMM yyyy – HH:mm').format(timestamp)}\n"
-                                "by: $user",
-                                style: GoogleFonts.alexandria(fontSize: 14),
-                              ),
-                              leading: Icon(
-                                action == 'add'
-                                    ? Icons.arrow_downward
-                                    : action == 'delete'
-                                        ? Icons.delete
-                                        : Icons.edit,
-                                color: action == 'add'
-                                    ? Colors.green
-                                    : action == 'delete'
-                                        ? Colors.red
-                                        : Colors.orange,
+                              child: Icon(
+                                actionIcon,
+                                color: actionColor,
+                                size: 28,
                               ),
                             ),
-                          );
-                        },
+                            const SizedBox(width: 16),
+                            // Content
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Product name
+                                  Text(
+                                    product,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey[800],
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  // Action and quantity
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: actionColor.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          actionText,
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                            color: actionColor,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      if (quantity > 0 || (quantity == 0 && actionText != 'Updated'))
+                                        Text(
+                                          '$quantity unit',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 12,
+                                            color: Colors.grey[600],
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      if (quantity == 0 && actionText == 'Updated')
+                                        Text(
+                                          'Stok habis',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 12,
+                                            color: Colors.red[600],
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  // Price and details
+                                  Row(
+                                    children: [
+                                      if (totalPrice != null) ...[
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          formatCurrency(totalPrice),
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.green[700],
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  // Timestamp and user
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.access_time,
+                                        size: 14,
+                                        color: Colors.grey[500],
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          DateFormat('dd MMM yyyy, HH:mm').format(timestamp),
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 12,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          'by: $user',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.blue[700],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 );
               },
             ),
