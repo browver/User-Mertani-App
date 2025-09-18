@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:user_app/user_interface.dart';
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
@@ -81,26 +82,37 @@ class _MyHomePageState extends State<MyHomePage> {
     yield* FirebaseFirestore.instance
       .collection('borrowed')
       .where('by', isEqualTo: currentUsername)
-      .where('status', isEqualTo: 'borrow')
+      .where('status', isEqualTo: 'dipinjam')
       .snapshots()
-      .map((snaphsot) => snaphsot.docs.length);
+      .map((snaphsot){
+        int total = 0;
+        for (var doc in snaphsot.docs) {
+          final data = doc.data();
+          total += (data['amount'] ?? 0) as int;
+        }
+        return total;
+      });
   }
 
 // New method to get real-time available items count
   Stream<int> _getAvailableItemsStream() {
     return FirebaseFirestore.instance
-      .collection('products')
+      .collectionGroup('items') // waw ternyata gunanya gitu
       .snapshots()
       .map((snapshot){
-        int availableCount = 0;
+        final Set<String> categories = {};
         for(var doc in snapshot.docs) {
           final data = doc.data();
-          final quantity = data['quantity'];
-          if(quantity > 0){
-            availableCount++;
+          final amount = data['amount'];
+          
+          if(amount > 0){
+            final categoryId = doc.reference.parent.parent?.id;
+            if (categoryId != null) {
+              categories.add(categoryId);
+            }
           }
         }
-        return availableCount;
+        return categories.length;
       });
   }
 
@@ -113,18 +125,18 @@ class _MyHomePageState extends State<MyHomePage> {
       final borrowedSnapshot = await FirebaseFirestore.instance
           .collection('borrowed')
           .where('by', isEqualTo: currentUserName)
-          .where('status', isEqualTo: 'borrow')
+          .where('status', isEqualTo: 'dipinjam')
           .get();
 
       // Get total available items
       final productsSnapshot = await FirebaseFirestore.instance
-          .collection('products')
+          .collection('items')
           .get();
 
       int availableCount = 0;
       for (var doc in productsSnapshot.docs) {
         final data = doc.data();
-        final quantity = data['quantity'] ?? 0;
+        final quantity = data['amount'] ?? 0;
         if (quantity > 0) {
           availableCount++;
         }
@@ -143,6 +155,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // Get User
   Future<String> getCurrentUserName() async {
+    if (userName != null) return userName!;
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('username') ?? 'Unknown';
     
@@ -152,7 +165,7 @@ class _MyHomePageState extends State<MyHomePage> {
   void showAddProductDialog(BuildContext context) {
     final TextEditingController controller = TextEditingController();
     final TextEditingController quantityController = TextEditingController();
-    final TextEditingController priceController = TextEditingController();
+    final TextEditingController merkController = TextEditingController();
     final TextEditingController skuController = TextEditingController();
     String selectedCategory = categories.isNotEmpty ? categories.first : '';
     final firestoreServices = FirestoreServices();
@@ -199,11 +212,11 @@ class _MyHomePageState extends State<MyHomePage> {
                 SizedBox(height: 12),
                 TextField(
                   decoration: InputDecoration(
-                    hintText: 'Harga',
+                    hintText: 'Merk',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   keyboardType: TextInputType.number,
-                  controller: priceController,
+                  controller: merkController, // Harga
                   style: GoogleFonts.poppins(),
                 ),
                 SizedBox(height: 12),
@@ -239,14 +252,23 @@ class _MyHomePageState extends State<MyHomePage> {
               onPressed: () async {
                 final product = controller.text.trim();
                 final quantity = int.tryParse(quantityController.text.trim()) ?? 0;
-                final rawPrice = priceController.text.trim();
-                final normalizedPrice = rawPrice.replaceAll('.', '').replaceAll(',', '.');
-                final price = double.tryParse(normalizedPrice) ?? 0.0;
+                final merk = merkController.text.trim();
+                // final rawPrice = merkController.text.trim();
+                // final normalizedPrice = rawPrice.replaceAll('.', '').replaceAll(',', '.');
+                // final price = double.tryParse(normalizedPrice) ?? 0.0;
                 final sku = skuController.text.trim();
                 final byId = await getCurrentUserName();
 
                 if (product.isNotEmpty && sku.isNotEmpty) {
-                  await firestoreServices.addProduct(product, quantity, price, sku, selectedCategory, '', byId);
+                  await firestoreServices.addProduct(
+                    product, 
+                    quantity, 
+                    sku, 
+                    selectedCategory, 
+                    '',
+                    byId,
+                    merk: merk,
+                    hasCustomImage: true);
                   _loadStats(); // Refresh stats
                 }
 
@@ -392,7 +414,7 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
 
               // Stats Cards (User specific)
-              if (role == 'user')
+              if (role == 'user' || role == 'admin')
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
@@ -578,7 +600,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       //   ),
 
                       // My Borrowings (User)
-                      if (role == 'user')
+                      if (role == 'user' || role == 'admin')
                         _buildGridItem(
                           context,
                           'Pinjaman Saya',
@@ -587,7 +609,21 @@ class _MyHomePageState extends State<MyHomePage> {
                           () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => MyBorrowingsPage()),
+                              MaterialPageRoute(builder: (context) => MyBorrowingsPage(userName: userName, isSelf: true)),
+                            );
+                          },
+                        ),
+
+                        if (role == 'admin')
+                        _buildGridItem(
+                          context,
+                          'Users',
+                          Icons.people,
+                          Colors.blue[700]!,
+                          () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => UserPage()),
                             );
                           },
                         ),
@@ -631,15 +667,62 @@ class _MyHomePageState extends State<MyHomePage> {
                     Navigator.pushNamed(context, '/category');
                   },
                 ),
-                SpeedDialChild(
-                  child: const Icon(Icons.add_box),
-                  label: 'Tambah Produk',
-                  foregroundColor: Colors.white,
-                  backgroundColor: Colors.blue[600],
-                  onTap: () {
-                    showAddProductDialog(context);
-                  },
-                ),
+
+                // // Backup Produk
+                // SpeedDialChild(
+                //   child: const Icon(Icons.save),
+                //   label: 'Backup Produk',
+                //   backgroundColor: Colors.green[600],
+                //   foregroundColor: Colors.white,
+                //   onTap: () async {
+                //     await FirestoreServices().backupProducts();
+                //     if (context.mounted) {
+                //       ScaffoldMessenger.of(context).showSnackBar(
+                //         SnackBar(content: Text('Backup berhasil disimpan')),
+                //       );
+                //     }
+                //   },
+                // ),
+
+                // // Cleanup Orphaned Data
+                // SpeedDialChild(
+                //   child: const Icon(Icons.cleaning_services),
+                //   label: 'Cleanup Orphaned Data',
+                //   backgroundColor: Colors.red[600],
+                //   foregroundColor: Colors.white,
+                //   onTap: () async {
+                //     await FirestoreServices().cleanupOrphanedData();
+                //     if (context.mounted) {
+                //       ScaffoldMessenger.of(context).showSnackBar(
+                //         SnackBar(content: Text('Cleanup selesai')),
+                //       );
+                //     }
+                //   },
+                // ),
+
+                // SpeedDialChild(
+                //   child: const Icon(Icons.cleaning_services),
+                //   label: 'Restore',
+                //   backgroundColor: Colors.redAccent,
+                //   onTap: () async {
+                //     await FirestoreServices().restoreFromItemAdded();
+                //     if (context.mounted) {
+                //       ScaffoldMessenger.of(context).showSnackBar(
+                //         SnackBar(content: Text('Restore selesai')),
+                //       );
+                //     }
+                //   },
+                // ),
+
+                // SpeedDialChild(
+                //   child: const Icon(Icons.add_box),
+                //   label: 'Tambah Produk',
+                //   foregroundColor: Colors.white,
+                //   backgroundColor: Colors.blue[600],
+                //   onTap: () {
+                //     showAddProductDialog(context);
+                //   },
+                // ),
               ],
             )
           : FloatingActionButton.extended(
@@ -730,8 +813,15 @@ class _MyHomePageState extends State<MyHomePage> {
 
 // My Borrowings Page (jika belum ada)
 class MyBorrowingsPage extends StatelessWidget {
-  const MyBorrowingsPage({super.key});
+  final String? userName;
+  final bool isSelf;
+
+  const MyBorrowingsPage({super.key, required this.userName, this.isSelf = false});
   Future<String> getCurrentUserName() async {
+    if(userName != null && userName!.isNotEmpty) {
+      return userName!;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getString('userId');
     if (userId == null) return 'Unknown';
@@ -766,7 +856,7 @@ class MyBorrowingsPage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.blue[600],
         title: Text(
-          'Pinjaman Saya',
+          'Pinjaman $userName',
           style: GoogleFonts.poppins(
             color: Colors.white,
             fontWeight: FontWeight.w600,
@@ -789,6 +879,12 @@ class MyBorrowingsPage extends StatelessWidget {
             builder: (context, snapshot) {
               if (snapshot.hasData) {
                 List borrowings = snapshot.data!.docs;
+
+                borrowings.sort((a,b) {
+                  final aDate = (a['borrowDate'] as Timestamp?)?.toDate() ?? DateTime(0);
+                  final bDate = (b['borrowDate'] as Timestamp?)?.toDate() ?? DateTime(0);
+                  return bDate.compareTo(aDate);
+                });
 
                 if (borrowings.isEmpty) {
                   return Center(
@@ -823,7 +919,7 @@ class MyBorrowingsPage extends StatelessWidget {
                     final borrowDate = parseBorrowDate(borrowing['borrowDate'])?? DateTime.now();
                     final status = borrowing['status'] ?? 'borrow';
                     final productId = borrowing['productId'] ?? '';
-                    final returnQuantity = borrowing['quantity'] ?? 0;
+                    final returnAmount = borrowing['amount'] ?? 0;
                     
                     return Card(
                       margin: EdgeInsets.only(bottom: 12),
@@ -850,7 +946,7 @@ class MyBorrowingsPage extends StatelessWidget {
                                 Container(
                                   padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: status == 'borrow'
+                                    color: status == 'dipinjam'
                                         ? Colors.orange[100]
                                         : Colors.green[100],
                                     borderRadius: BorderRadius.circular(8),
@@ -860,7 +956,7 @@ class MyBorrowingsPage extends StatelessWidget {
                                     style: GoogleFonts.poppins(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: status == 'borrow'
+                                      color: status == 'dipinjam'
                                           ? Colors.orange[800]
                                           : Colors.green[800],
                                     ),
@@ -870,7 +966,7 @@ class MyBorrowingsPage extends StatelessWidget {
                             ),
                             SizedBox(height: 8),
                             Text(
-                              'Jumlah: ${borrowing['quantity']} unit',
+                              'Jumlah: ${borrowing['amount']} unit',
                               style: GoogleFonts.poppins(
                                 fontSize: 14,
                                 color: Colors.grey[600],
@@ -897,7 +993,7 @@ class MyBorrowingsPage extends StatelessWidget {
                                 ),
                               ),
 
-                              if(status == 'borrow')...[
+                              if(status == 'dipinjam' && isSelf == true)...[
                                 SizedBox(height: 12),
                                 ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(
@@ -920,8 +1016,9 @@ class MyBorrowingsPage extends StatelessWidget {
                                         return;
                                       }
                                       await firestore.returnProduct(
+                                        categoryId: borrowing['category'] ?? '',
                                         docId: borrowing['productId'] ?? 'Unknown Product', 
-                                        returnQuantity: returnQuantity);
+                                        returnAmount: returnAmount);
                                       
                                       await FirebaseFirestore.instance
                                         .collection('borrowed')

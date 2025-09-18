@@ -22,13 +22,15 @@ class _HistoryPageState extends State<HistoryPage> {
 
   Color _getActionColor(String action) {
     switch (action) {
-      case 'add':
-        return Colors.green[700]!;
+      case 'item_added':
+        return Colors.purple[700]!;
       case 'borrow':
         return Colors.blue[700]!;
       case 'return':
-        return Colors.purple[700]!;
-      case 'delete':
+        return Colors.green[700]!;
+      case 'item_deleted':
+        return Colors.red[700]!;
+      case 'item_out':
         return Colors.red[700]!;
       default:
         return Colors.orange[700]!;
@@ -37,14 +39,16 @@ class _HistoryPageState extends State<HistoryPage> {
 
   IconData _getActionIcon(String action) {
     switch (action) {
-      case 'add':
+      case 'item_added':
         return Icons.add_circle;
       case 'borrow':
         return Icons.inventory;
       case 'return':
         return Icons.check_circle;
-      case 'delete':
-        return Icons.delete_outline;
+      case 'item_deleted':
+        return Icons.delete;
+      case 'item_out':
+        return Icons.exit_to_app;
       default:
         return Icons.edit_outlined;
     }
@@ -52,16 +56,18 @@ class _HistoryPageState extends State<HistoryPage> {
 
   String _getActionText(String action) {
     switch (action) {
-      case 'add':
-        return 'Added';
-      case 'delete':
-        return 'Deleted';
+      case 'item_added':
+        return 'Ditambahkan';
+      case 'item_deleted':
+        return 'Dihapus';
+      case 'item_out':
+        return 'Barang Keluar';
       case 'update':
-        return 'Updated';
+        return 'Diperbarui';
       case 'borrow':
-        return 'Borrowed';
+        return 'Dipinjam';
       case 'return':
-        return 'Returned';
+        return 'Dikembalikan';
       default:
         return 'Unknown';
     }
@@ -228,11 +234,11 @@ class _HistoryPageState extends State<HistoryPage> {
                             style: GoogleFonts.poppins(color: Colors.grey[800]),
                             items: const [
                               DropdownMenuItem(value: 'all', child: Text("Semua")),
-                              DropdownMenuItem(value: 'add', child: Text("Tambah")),
-                              DropdownMenuItem(value: 'update', child: Text("Update")),
-                              DropdownMenuItem(value: 'delete', child: Text("Hapus")),
-                              DropdownMenuItem(value: 'borrow', child: Text("Pinjam")),
-                              DropdownMenuItem(value: 'return', child: Text("Kembali")),
+                              DropdownMenuItem(value: 'item_added', child: Text("Ditambahkan")),
+                              DropdownMenuItem(value: 'item_out', child: Text("Barang Keluar")),
+                              DropdownMenuItem(value: 'item_deleted', child: Text("Dihapus")),
+                              DropdownMenuItem(value: 'borrow', child: Text("Dipinjam")),
+                              DropdownMenuItem(value: 'return', child: Text("Dikembalikan")),
                             ],
                             onChanged: (value) {
                               if (value != null) setState(() => actionFilter = value);
@@ -270,10 +276,11 @@ class _HistoryPageState extends State<HistoryPage> {
                   );
                 }
 
+                // Item Display
                 final allDocs = snapshot.data!.docs;
                 final filteredDocs = allDocs.where((doc) {
                   final data = doc.data();
-                  final productName = (data['items'] ?? '').toString().toLowerCase();
+                  final productName = (data['name'] ?? data['item_name'] ?? '').toString().toLowerCase();
                   final action = data['action'];
 
                   final matchesSearch = productName.contains(searchQuery);
@@ -318,12 +325,12 @@ class _HistoryPageState extends State<HistoryPage> {
                   itemCount: filteredDocs.length,
                   itemBuilder: (context, index) {
                     final data = filteredDocs[index].data();
-                    final product = data['items'] ?? '';
+                    final product = data['name'] ?? data['item_name'] ?? '';
                     final action = data['action'] ?? '';
-                    final quantity = data['quantity'] ?? 0;
-                    final totalPrice = data['total_price'];
+                    final quantity = data['amount'] ?? 0;
+                    final sku = data['sku']?? data['item_sku'] ?? 'No SKU';
                     final timestamp = (data['timestamp'] as Timestamp).toDate();
-                    final user = data['by'] ?? 'Unknown';
+                    final user = data['by'] ?? data['user'] ?? data['user_email'] ?? 'Unknown';
 
                     final actionText = _getActionText(action);
                     final actionColor = _getActionColor(action);
@@ -428,18 +435,15 @@ class _HistoryPageState extends State<HistoryPage> {
                                   // Price and details
                                   Row(
                                     children: [
-                                      if (totalPrice != null) ...[
-                                        const SizedBox(width: 4),
                                         Text(
-                                          formatCurrency(totalPrice),
+                                          'Sku: $sku',
                                           style: GoogleFonts.poppins(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w600,
-                                            color: Colors.green[700],
+                                            color: Colors.grey[600],
                                           ),
                                         ),
                                       ],
-                                    ],
                                   ),
                                   const SizedBox(height: 8),
                                   // Timestamp and user

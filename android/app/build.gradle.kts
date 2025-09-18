@@ -1,3 +1,5 @@
+val kotlin_version = "2.2.20"
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -9,13 +11,14 @@ plugins {
 }
 
 android {
-    namespace = "com.example.user_app"
+    namespace = "com.user_borrow_app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true 
     }
 
     kotlinOptions {
@@ -24,7 +27,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.userapp"
+        applicationId = "com.user_borrow_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 23
@@ -45,3 +48,9 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+}
+

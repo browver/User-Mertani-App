@@ -30,4 +30,14 @@ class CategoryModel {
       iconCode: map['icon'],
     );
   }
+
+  // fallback brow
+  factory CategoryModel.fromFirestore(
+    String docId, Map<String, dynamic> data) {
+  return CategoryModel(
+    id: docId, 
+    name: data['name'] ?? docId, 
+    iconCode: data['icon'] ?? Icons.inventory_2_outlined.codePoint,
+    );
+  }
 }

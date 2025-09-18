@@ -1,4 +1,4 @@
-package com.example.user_app
+package com.user_borrow_app
 
 import io.flutter.embedding.android.FlutterActivity
 

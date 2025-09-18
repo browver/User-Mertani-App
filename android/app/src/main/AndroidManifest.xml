@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.user_app">
+    package="com.user_borrow_app">
 
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
@@ -7,7 +7,7 @@
 
 
     <application
-        android:label="Mertani Warehouse User"
+        android:label="Mertani User App"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         <activity

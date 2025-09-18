@@ -90,12 +90,8 @@ Future<void> _handleLogin() async {
           _usernameController.clear();
           _passwordController.clear();
 
-        if (role == 'user') {
+        if (role == 'user' || role == 'admin') {
           Navigator.pushNamedAndRemoveUntil(context, '/homepage', (route) => false);
-          return;
-        } 
-        else if (role == 'admin') {
-          Navigator.pushNamedAndRemoveUntil(context, '/userpage', (route) => false);
           return;
         } 
         else {
@@ -142,9 +138,9 @@ Future<void> _handleLogin() async {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF2196F3), // Blue primary
-              Color(0xFF1976D2), // Blue darker
-              Color(0xFF0D47A1), // Blue darkest
+              Color(0xFF2196F3), 
+              Color(0xFF1976D2), 
+              Color(0xFF0D47A1),
             ],
             stops: [0.0, 0.6, 1.0],
           ),
@@ -541,7 +537,7 @@ Future<void> _handleLogin() async {
                             ),
                             SizedBox(width: 6), 
                             Text(
-                              'Encrypted',
+                              'Safe & Encrypted',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.8),
                                 fontSize: 12, 
@@ -552,7 +548,7 @@ Future<void> _handleLogin() async {
                         ),
                         SizedBox(height: 8), 
                         Text(
-                          '© 2024 Mertani App',
+                          '  © 2025 Mertani App',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.6),
                             fontSize: 11, 

@@ -183,11 +183,11 @@ class _CategoryPageState extends State<CategoryPage> {
           fontWeight: FontWeight.bold
           ),
         ),
-        backgroundColor: Colors.orange[500], 
+        backgroundColor: Colors.blue[600], 
       ),
       floatingActionButton: role == 'admin'? FloatingActionButton(
         onPressed: _showAddCategoryDialog,
-        backgroundColor: Colors.orange[500], 
+        backgroundColor: Colors.blue[600], 
         child: const Icon(Icons.add, color: Colors.white),
       ) :null ,
       body: Column( 
@@ -244,7 +244,7 @@ class _CategoryPageState extends State<CategoryPage> {
                               borderRadius: BorderRadius.circular(16), 
                             ),
                             tileColor: Colors.white, 
-                            leading: Icon(category.icon, color: Colors.orange[500]), 
+                            leading: Icon(category.icon, color: Colors.blue[600]), 
                             title: Text(
                               category.name,
                               style: GoogleFonts.alexandria( 
@@ -257,15 +257,16 @@ class _CategoryPageState extends State<CategoryPage> {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                if (role == 'asfnskdf')
                                 IconButton(
                                   icon: const Icon(Icons.edit),
-                                  color: Colors.orange[500],
+                                  color: Colors.blue[600],
                                   onPressed: () => _editCategoryDialog(category),
                                 ),
-                                if (role == 'admin')
+                                if (role == 'asfnskdf')
                                 IconButton(
                                   icon: const Icon(Icons.delete),
-                                  color: Colors.orange[500],
+                                  color: Colors.blue[600],
                                   onPressed: () async {
                                     bool localDeleteProducts = deleteProducts;
 

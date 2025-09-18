@@ -12,17 +12,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'secrets.dart';
 
 class FirestoreServices {
+  // optional
+  final FirebaseFirestore firestore = FirebaseFirestore.instance;
   final CollectionReference? categories =
     FirebaseFirestore.instance.collection('categories');
   final CollectionReference? products =
-    FirebaseFirestore.instance.collection('products');
-  final CollectionReference? components =
-    FirebaseFirestore.instance.collection('components');
-  final CollectionReference? sensors =
-    FirebaseFirestore.instance.collection('sensors');
-  final CollectionReference? loggers =
-    FirebaseFirestore.instance.collection('loggers');
+    FirebaseFirestore.instance.collection('items');
+  final CollectionReference? history =
+      FirebaseFirestore.instance.collection('history');
 
+  CollectionReference<Map<String, dynamic>> _itemsRef(String categoryId) {
+    return FirebaseFirestore.instance
+      .collection('categories')
+      .doc(categoryId)
+      .collection('items');
+  }
 
   // Get User
   static Future <String> getCurrentUsername() async {
@@ -42,7 +46,16 @@ class FirestoreServices {
   } catch(e) {
     return 'Unknown';
   }
-  
+  }
+
+  // get Items
+  Stream<QuerySnapshot> getItemsByCategoryId(String categoryId){
+    return FirebaseFirestore.instance
+    .collection('categories')
+      .doc(categoryId)
+      .collection('items')
+      .orderBy('timestamp', descending: true)
+      .snapshots();
   }
 
   // Realtime update borrowed
@@ -81,10 +94,8 @@ class FirestoreServices {
 
     if(xfile != null) {
       final compressedFile =  File(xfile.path);
-      // print('Compressed file size: ${await compressedFile.length()} bytes');
       return compressedFile;
     } else {
-      // print('compression failed!');
       return null;
     }
   }
@@ -125,7 +136,6 @@ Future<void> _deleteFromCloudinary(String publicId) async {
   });
 }
 
-
   // Category default seeder
   Future<void> seedDefaultCategories() async {
     final existing = await categories!.get();
@@ -147,7 +157,6 @@ Future<void> _deleteFromCloudinary(String publicId) async {
   // Update Category
   Future<void> updateCategory(String oldName, String newName, int newIconCodePoint) async {
     final categoryRef = FirebaseFirestore.instance.collection('categories');
-    final productRef = FirebaseFirestore.instance.collection('products');
 
     final query = await categoryRef.where('name', isEqualTo: oldName).get();
     for (var doc in query.docs) {
@@ -155,16 +164,15 @@ Future<void> _deleteFromCloudinary(String publicId) async {
         'name':newName,
         'icon':newIconCodePoint,
       });
-    }
-
+    
     // Update all product with the new category
-    final productQuery = await productRef.where('category', isEqualTo: oldName).get();
-    for (var doc in productQuery.docs) {
+    final itemsSnapshot = await doc.reference.collection('items').where('category', isEqualTo: oldName).get();
+    for (var doc in itemsSnapshot.docs) {
       await doc.reference.update({
         'category' : newName,
       });
+      }
     }
-
   }
   
   // takes all categories as a stream
@@ -172,10 +180,7 @@ Future<void> _deleteFromCloudinary(String publicId) async {
     return categories!.snapshots().map((snapshot) {
       return snapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
-        return CategoryModel.fromMap({
-          'id': doc.id,
-          ...data,
-        });
+        return CategoryModel.fromFirestore(doc.id, data);
       }).toList();
     });
   }
@@ -193,159 +198,159 @@ Future<void> _deleteFromCloudinary(String publicId) async {
 
       final batch = FirebaseFirestore.instance.batch();
       final categoryRef = FirebaseFirestore.instance.collection('categories').doc(categoryName);
-      final subProductsQuery = await categoryRef.collection('products').get();
+      final subProductsQuery = await categoryRef.collection('items').get();
+
+      List<Map<String, dynamic>> historyData = [];
 
       for (final doc in productDocs.docs) {
         final data = doc.data() as Map<String, dynamic>;
-        final product = data['product'] ?? '';
-        final quantity = data['quantity'] ?? 0;
+        final product = data['name'] ?? '';
+        final amount = data['amount'] ?? 0;
         final price = (data['price'] as num?)?.toDouble() ?? 0.0;
         final sku = data['sku'] ?? '';
-        final category = data['category'] ?? '';
         final imageUrl = data['imageUrl'] ?? '';
-        final user = await getCurrentUsername();
-
-
-        await addHistory(product, 'delete', quantity, sku, category, imageUrl, user , totalPrice: quantity * price);
+        
+        if (imageUrl.isNotEmpty) {
+          final publicId = _extractPublicIdFromUrl(imageUrl);
+          if (publicId != null) {
+            await _deleteFromCloudinary(publicId);
+          }
+        }
+        
+        historyData.add({
+          'product': product,
+          'amount': amount,
+          'price': price,
+          'sku': sku,
+          'imageUrl': imageUrl,
+        });
+        
         batch.delete(doc.reference);
       }
+      
       for (final doc in subProductsQuery.docs) {
         batch.delete(doc.reference);
       }
       batch.delete(categoryRef);
+      
       await batch.commit();
+      
+      final user = await getCurrentUsername();
+      for (var data in historyData) {
+        await addHistory(
+          data['product'], 
+          'delete', 
+          data['amount'], 
+          data['sku'], 
+          categoryName, 
+          data['imageUrl'], 
+          user, 
+          totalPrice: data['amount'] * data['price']
+        );
+      }
   }
 
   // adding Product
-  Future<void> addProduct(String name, int quantity, double price, String sku, String category, String imageUrl, String byUser) async{
+  Future<void> addProduct(String name, int amount, String sku, String category, String imageUrl, String byUser, {String merk = '', bool hasCustomImage = true}) async{
     final data = {
-      'product':name,
-      'quantity': quantity,
-      'price': price,
+      'name':name,
+      'amount': amount,
       'sku': sku,
       'category': category,
+      'merk' : merk,
+      'hasCustomImage' : hasCustomImage,
       if (imageUrl.isNotEmpty) 'imageUrl' : imageUrl,
       'by' : byUser, 
-      'timestamp': FieldValue.serverTimestamp()
+      'timestamp': FieldValue.serverTimestamp(),
+      'last_updated': FieldValue.serverTimestamp(),
     };
     
     // add to collections
-    final docRef = await products!.add(data);
+    await products!.doc(sku).set(data);
     final categoryRef = FirebaseFirestore.instance.collection('categories').doc(category);
-    final user = await getCurrentUsername();
-    await categoryRef.collection('products').add({
-      ...data,
-      'docId' : docRef.id,
-      });
+    await categoryRef.collection('items').doc(sku).set(data);
 
     // add to history
+    final user = await getCurrentUsername();
     await addHistory(
       name,
-      'add',
-      quantity,
+      'item_added',
+      amount,
       sku,
       category,
       imageUrl,
       user,
-      totalPrice: quantity * price,
     );    
   }
 
   //read data
   Stream<QuerySnapshot> showProducts() {
-    final productsStream = products!.orderBy('timestamp', descending: true).snapshots();
-    return productsStream;
+    return FirebaseFirestore.instance.collectionGroup('items').snapshots();
   }
 
   //read data by category
   Stream<QuerySnapshot> getProductsByCategory(String categoryName) {
     return FirebaseFirestore.instance
-        .collection('products')
+        .collection('items')
         .where('category', isEqualTo: categoryName)
         .orderBy('timestamp', descending: true)
         .snapshots();
   }
 
-  // update Product
-  Future<void> updateProducts(String docId, String newProduct, int quantity, double price, String sku, String oldCategory, String newCategory,String imageUrl,String byUser ,Timestamp time) async{
+  // Update Product
+  Future<void> updateProducts({
+    required String categoryId,
+    required String docId,
+    required String newName,
+    required int amount,
+    required double price,
+    required String sku,
+    required String imageUrl,
+    String merk = '',
+  }) async {
     final user = await getCurrentUsername();
-    
-    await products!.doc(docId).update({
-      'product':newProduct,
-      'quantity':quantity,
-      'price':price,
+
+    final newData = {
+      'name': newName,
+      'amount': amount,
+      'price': price,
       'sku': sku,
-      'category': newCategory,
-      if (imageUrl.isNotEmpty) 'imageUrl' : imageUrl,
-      'by' : user,
-      'timestamp': time});
+      'merk': merk,
+      if (imageUrl.isNotEmpty) 'imageUrl': imageUrl,
+      'by': user,
+      'last_updated': FieldValue.serverTimestamp(),
+    };
 
-      final newData = {
-      'product':newProduct,
-      'quantity':quantity,
-      'price':price,
-      'sku': sku,
-      'imageUrl' : imageUrl,
-      'docId' : docId,
-      'by' : user,
-      'timestamp': time
-      };
+    // Update both collections
+    await products!.doc(sku).update(newData);
+    await _itemsRef(categoryId).doc(sku).update(newData);
 
-      if(oldCategory == newCategory) {
-        final subProducts = await categories!
-          .doc(newCategory)
-          .collection('products')
-          .where('docId', isEqualTo: docId)
-          .get();
-
-        for (var doc in subProducts.docs) {
-          await doc.reference.update(newData);
-        }
-      } else {
-        final oldSubProducts = await categories!
-          .doc(oldCategory)
-          .collection('products')
-          .where('docId', isEqualTo: docId)
-          .get();
-
-          for(var doc in oldSubProducts.docs) {
-            await doc.reference.delete();
-          }
-
-          await categories!
-            .doc(newCategory)
-            .collection('products')
-            .add(newData);
-      }
-
-      // await updateProductInCategorySubcollection(docId, sku, newProduct, newCategory, quantity, price, imageUrl);
-
-      if (quantity > 0) {
-        await addHistory(
-        newProduct,
+    if (amount > 0) {
+      await addHistory(
+        newName,
         'update',
-        quantity,
+        amount,
         sku,
-        newCategory,
+        categoryId,
         imageUrl,
         user,
-        totalPrice: quantity * price,  
+        totalPrice: amount * price,
       );
     }
   }
 
   // Update Product in Category
-  Future<void> updateProductInCategorySubcollection(String docId, String sku, String product, String category, int quantity, double price, String imageUrl, String byUser) async {
+  Future<void> updateProductInCategorySubcollection(String docId, String sku, String product, String category, int amount, double price, String imageUrl, String byUser) async {
     final subProducts = await categories!
     .doc(category)
-    .collection('products')
-    .where('docId', isEqualTo: docId)
+    .collection('items')
+    .where('sku', isEqualTo: sku)
     .get();
 
     for (var doc in subProducts.docs) {
       await doc.reference.update({
-        'product' : product,
-        'quantity' : quantity,
+        'name' : product,
+        'amount' : amount,
         'price' : price,
         'imageUrl' : imageUrl,
         'sku' : sku
@@ -355,108 +360,102 @@ Future<void> _deleteFromCloudinary(String publicId) async {
 
   // Borrowed Product
   Future<void> borrowProduct({
+    required String categoryId,
     required String docId,
-    required int borrowQuantity,
+    required int borrowAmount,
   }) async {
-    final docSnapshot = await products!.doc(docId).get();
-    final data = docSnapshot.data() as Map<String, dynamic>?;
+    final docRef = _itemsRef(categoryId).doc(docId);
+    final docSnapshot = await docRef.get();
+    final data = docSnapshot.data();
 
-    if(data == null) return;
+    if (data == null) return;
 
-    final currentQuantity = data['quantity'] ?? 0;
-    final newQuantity = currentQuantity - borrowQuantity;
+    final currentAmount = data['amount'] ?? 0;
+    final newAmount = currentAmount - borrowAmount;
 
-    if(newQuantity <= 0) {
+    if (newAmount < 0) {
       throw Exception('Stok tidak cukup untuk dipinjam');
     }
 
     final user = await getCurrentUsername();
 
-    // Update quantity
-    await products!.doc(docId).update({
-      'quantity' : newQuantity,
-      'by' : user,
-      'timestamp' : Timestamp.now(),
+    // Update amount di subcollection
+    await docRef.update({
+      'amount': newAmount,
+      'by': user,
+      'last_updated': FieldValue.serverTimestamp(),
     });
 
-    final product = data['product'] ?? '';
-    final sku = data['sku'] ?? '';
-    final category = data['category'] ?? '';
+    // Update amount di main collection
+    // await products!.doc(docId).update({
+    //   'amount': newAmount,
+    //   'by': user,
+    //   'last_updated': FieldValue.serverTimestamp(),
+    // });
+
+    final product = data['name'] ?? '';
+    final sku = data['sku'] ?? docId;
     final imageUrl = data['imageUrl'] ?? '';
     final price = (data['price'] as num?)?.toDouble() ?? 0.0;
 
     // add to history
     await addHistory(
-      product, 
-      'borrow', 
-      borrowQuantity, 
-      sku, 
-      category, 
-      imageUrl, 
+      product,
+      'borrow',
+      borrowAmount,
+      sku,
+      categoryId,
+      imageUrl,
       user,
-      totalPrice: price * borrowQuantity
+      totalPrice: price * borrowAmount,
     );
-
-    await FirebaseFirestore.instance.collection('borrowed').add({
-      'product' : product,
-      'sku' : sku,
-      'category' : category,
-      'quantity' : borrowQuantity,
-      'imageUrl' : imageUrl,
-      'by' : user,
-      'borrowed at' : Timestamp.now()
-    });
   }
 
   // Return Product
   Future<void> returnProduct({
+    required String categoryId,
     required String docId,
-    required int returnQuantity,
+    required int returnAmount,
   }) async {
-    final docSnapshot = await products!.doc(docId).get();
-    final data = docSnapshot.data() as Map<String, dynamic>?;
-    
-    if(data == null) return;
+    // Menggunakan sku sebagai docId untuk konsistensi
+    final docRef = _itemsRef(categoryId).doc(docId);
+    final docSnapshot = await docRef.get();
+    final data = docSnapshot.data();
 
-    final currentQuantity = data['quantity'] ?? 0;
-    final newQuantity = currentQuantity + returnQuantity;
+    if (data == null) return;
+
+    final currentAmount = data['amount'] ?? 0;
+    final newAmount = currentAmount + returnAmount;
 
     final user = await getCurrentUsername();
-    final product = data['product'] ?? '';
-    final sku = data['sku'] ?? '';
-    final category = data['category'] ?? '';
+    final product = data['name'] ?? '';
+    final sku = data['sku'] ?? docId;
     final imageUrl = data['imageUrl'] ?? '';
     final price = (data['price'] as num?)?.toDouble() ?? 0.0;
 
-    await products!.doc(docId).update({
-      'quantity' : newQuantity,
-      'by' : user,
-      'timestamp' : Timestamp.now()
+    // Update amount di subcollection
+    await docRef.update({
+      'amount': newAmount,
+      'by': user,
+      'last_updated': FieldValue.serverTimestamp(),
     });
 
-    final subProductsSnapshot = await categories!
-      .doc(category)
-      .collection('products')
-      .where('docId', isEqualTo: docId)
-      .get();
-    
-    for(final doc in subProductsSnapshot.docs) {
-      await doc.reference.update({
-        'quantity' : newQuantity,
-        'by' : user,
-        'timestamp' : Timestamp.now()
-      });
-    }
+    // Update amount di main collection
+    // await products!.doc(docId).update({
+    //   'amount': newAmount,
+    //   'by': user,
+    //   'last_updated': FieldValue.serverTimestamp(),
+    // });
 
     await addHistory(
-      product, 
-      'return', 
-      returnQuantity, 
-      sku, 
-      category, 
-      imageUrl, 
+      product,
+      'return',
+      returnAmount,
+      sku,
+      categoryId,
+      imageUrl,
       user,
-      totalPrice: price * returnQuantity
+      totalPrice: price * returnAmount,
     );
   }
 
@@ -468,8 +467,8 @@ Future<void> _deleteFromCloudinary(String publicId) async {
     if (data != null) {
       final category = data['category'] ?? '';
       final imageUrl = data['imageUrl'] ?? '';
-      final product = data['product'] ?? '';
-      final quantity = data['quantity'] ?? '';
+      final product = data['name'] ?? '';
+      final amount = data['amount'] ?? 0;
       final price = (data['price'] as num?)?.toDouble() ?? 0.0;
       final sku = data['sku'] ?? '';
 
@@ -482,27 +481,31 @@ Future<void> _deleteFromCloudinary(String publicId) async {
         }
       }
 
+      final batch = FirebaseFirestore.instance.batch();
+      batch.delete(products!.doc(docId));
+
       final categoryRef = FirebaseFirestore.instance.collection('categories').doc(category);
       final subProducts = await categoryRef
-          .collection('products')
-          .where('docId', isEqualTo: docId)
+          .collection('items')
+          .where('sku', isEqualTo: sku)
           .get();
       for (var doc in subProducts.docs) {
         await doc.reference.delete();
       }
 
       // add to history
-      await addHistory(product, 'delete', quantity, sku, category, imageUrl, user, totalPrice: quantity * price);
+      await batch.commit();
+      await addHistory(product, 'delete', amount, sku, category, imageUrl, user, totalPrice: amount * price);
     }
     // delete all products
     await products!.doc(docId).delete();
   }
 
   // History
-  Future<void> addHistory(String items, String action ,int quantity, String sku, String category, String imageUrl, String byUser ,{double? totalPrice} ) async {
+  Future<void> addHistory(String items, String action ,int amount, String sku, String category, String imageUrl, String byUser ,{double? totalPrice} ) async {
     await FirebaseFirestore.instance.collection('history').add({
-      'items':items,
-      'quantity':quantity,
+      'name':items,
+      'amount':amount,
       'action':action,
       'sku': sku,
       'category': category,
@@ -522,4 +525,178 @@ Future<void> _deleteFromCloudinary(String publicId) async {
       await doc.reference.delete();
     }
   }
+
+
+
+// TESTING SOME FEATURES..
+
+// /// Cleanup data orphaned (main + subcollections)
+// Future<void> cleanupOrphanedData() async {
+//   print('🧹 Cleanup orphaned data dimulai...');
+
+//   final allCategories = await categories!.get();
+//   final validCategories = allCategories.docs.map((doc) => doc.id).toSet();
+
+//   // Cleanup main collection
+//   final allProducts = await products!.get();
+//   final batchMain = FirebaseFirestore.instance.batch();
+//   int deletedMain = 0;
+
+//   for (var doc in allProducts.docs) {
+//     final data = doc.data() as Map<String, dynamic>;
+//     final category = data['category'] ?? '';
+//     if (!validCategories.contains(category)) {
+//       batchMain.delete(doc.reference);
+//       deletedMain++;
+//     }
+//   }
+//   if (deletedMain > 0) await batchMain.commit();
+
+//   // Cleanup subcollections
+//   for (var categoryDoc in allCategories.docs) {
+//     final items = await categoryDoc.reference.collection('items').get();
+//     final batchSub = FirebaseFirestore.instance.batch();
+//     int deletedSub = 0;
+
+//     for (var item in items.docs) {
+//       final sku = item['sku'] ?? '';
+//       final mainDoc = await products!.doc(sku).get();
+//       if (!mainDoc.exists) {
+//         batchSub.delete(item.reference);
+//         deletedSub++;
+//       }
+//     }
+//     if (deletedSub > 0) await batchSub.commit();
+//   }
+
+//   print('✅ Cleanup selesai');
+// }
+
+// // ==========================================================================
+// /// Sinkronisasi data dari main ke subcollections
+// Future<void> syncProducts() async {
+//   print('🔄 Sinkronisasi dimulai...');
+//   final allProducts = await products!.get();
+
+//   for (var doc in allProducts.docs) {
+//     final data = doc.data() as Map<String, dynamic>;
+//     final sku = data['sku'] ?? '';
+//     final category = data['category'] ?? '';
+
+//     if (sku.isNotEmpty && category.isNotEmpty) {
+//       await categories!.doc(category).collection('items').doc(sku).set(data);
+//     }
+//   }
+
+//   print('✅ Sinkronisasi selesai');
+// }
+
+// /// Verifikasi konsistensi data
+// Future<void> verifyData() async {
+//   final mainCount = (await products!.get()).docs.length;
+//   int subCount = 0;
+
+//   final allCategories = await categories!.get();
+//   for (var categoryDoc in allCategories.docs) {
+//     final subDocs = await categoryDoc.reference.collection('items').get();
+//     subCount += subDocs.docs.length;
+//   }
+
+//   print('📊 Main: $mainCount | Sub: $subCount');
+//   if (mainCount == subCount) {
+//     print('✅ Data konsisten');
+//   } else {
+//     print('⚠️ Data tidak konsisten');
+//   }
+// }
+
+// /// Backup data ke history
+// Future<void> backupProducts() async {
+//   print('💾 Backup dimulai...');
+//   final allProducts = await products!.get();
+//   final user = await getCurrentUsername();
+
+//   for (var doc in allProducts.docs) {
+//     final data = doc.data() as Map<String, dynamic>;
+//     await addHistory(
+//       data['name'] ?? 'Unknown',
+//       'backup',
+//       data['amount'] ?? 0,
+//       data['sku'] ?? '',
+//       data['category'] ?? '',
+//       data['imageUrl'] ?? '',
+//       user,
+//     );
+//   }
+//   print('✅ Backup selesai');
+// }
+
+
+
+// // Ambil daftar backup (history docs)
+// Future<List<String>> getBackupList() async {
+//   final snapshot = await history!.get();
+//   return snapshot.docs.map((doc) => doc.id).toList();
+// }
+
+// Future<void> restoreFromItemAdded() async {
+//   try {
+//     final firestore = FirebaseFirestore.instance;
+
+//     // Ambil semua data history dengan action item_added
+//     final historySnapshot = await firestore
+//         .collection('history')
+//         .where('action', isEqualTo: 'item_added')
+//         .get();
+
+//     if (historySnapshot.docs.isEmpty) {
+//       print("⚠️ Tidak ada item dengan action 'item_added' di history");
+//       return;
+//     }
+
+//     for (var doc in historySnapshot.docs) {
+//       final data = doc.data();
+
+//       final sku = data['item_sku'] ?? '';
+//       final category = data['category'] ?? '';
+//       final productName = data['item_name'] ?? 'Unknown';
+
+//       if (sku.isEmpty || category.isEmpty) continue;
+
+//       // Cek apakah sudah ada di subcollection
+//       final itemRef = firestore
+//           .collection('categories')
+//           .doc(category)
+//           .collection('items')
+//           .doc(sku);
+
+//       final existing = await itemRef.get();
+//       if (existing.exists) {
+//         print("⏩ SKU $sku ($productName) sudah ada, skip restore");
+//         continue;
+//       }
+
+//       // Bangun data restore
+//       final restoredData = {
+//         'sku': sku,
+//         'name': productName,
+//         'merk': data['item_merk'] ?? '',
+//         'amount': data['amount'] ?? 0,
+//         'by': data['user_email'] ?? '',
+//         'imageUrl': data['imageUrl'] ?? '', // optional kalau ada
+//         'hasCustomImage': (data['imageUrl'] ?? '').isNotEmpty,
+//         'last_updated': FieldValue.serverTimestamp(),
+//         'timestamp': data['timestamp'],
+//       };
+
+//       // Simpan ke subcollection kategori/items
+//       await itemRef.set(restoredData);
+
+//       print("✅ Produk $productName ($sku) berhasil direstore ke kategori $category");
+//     }
+//   } catch (e) {
+//     print("❌ Error saat restoreFromItemAdded: $e");
+//   }
+// }
+
 }

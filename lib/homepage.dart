@@ -190,32 +190,22 @@ class _HomePageState extends State<HomePage> {
                     'productId': docId,
                     'sku': sku,
                     'category': category,
-                    'quantity': borrowQty,
+                    'amount': borrowQty,
                     'by': borrowerName,
                     'borrowDate': Timestamp.now(),
-                    'status': 'borrow',
+                    'status': 'dipinjam',
                     'notes': notes,
                     'imageUrl': imageUrl,
                     'totalPrice' : totalPrice
                   });
-
-                  await firestoreServices.addHistory(
-                    productName, 
-                    'borrow', 
-                    borrowQty, 
-                    sku, 
-                    category, 
-                    imageUrl, 
-                    borrowerName,
-                    totalPrice: totalPrice
-                  );
                   
                   // Update product quantity
-                  final newQuantity = availableQuantity - borrowQty;
-                  await FirebaseFirestore.instance.collection('products').doc(docId).update({
-                    'quantity': newQuantity,
-                  });
-                  
+                  await firestoreServices.borrowProduct(
+                    categoryId: category,
+                    docId: sku,
+                    borrowAmount: borrowQty,
+                  );
+          
                   if(!context.mounted)return;
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -337,74 +327,12 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
 
-          // Category Filter Pills
-          // if (categories.isNotEmpty)
-          //   Container(
-          //     height: 50,
-          //     margin: EdgeInsets.only(bottom: 16),
-          //     child: ListView.builder(
-          //       scrollDirection: Axis.horizontal,
-          //       padding: EdgeInsets.symmetric(horizontal: 16),
-          //       itemCount: categories.length + 1,
-          //       itemBuilder: (context, index) {
-          //         if (index == 0) {
-          //           return Padding(
-          //             padding: EdgeInsets.only(right: 8),
-          //             child: FilterChip(
-          //               label: Text(
-          //                 'Semua',
-          //                 style: GoogleFonts.poppins(
-          //                   color: selectedFilterCategory == null
-          //                       ? Colors.white
-          //                       : Colors.blue[600],
-          //                   fontWeight: FontWeight.w500,
-          //                 ),
-          //               ),
-          //               selected: selectedFilterCategory == null,
-          //               onSelected: (selected) {
-          //                 setState(() {
-          //                   selectedFilterCategory = null;
-          //                 });
-          //               },
-          //               backgroundColor: Colors.white,
-          //               selectedColor: Colors.blue[600],
-          //               checkmarkColor: Colors.white,
-          //             ),
-          //           );
-          //         }
-                  
-          //         final category = categories[index - 1];
-          //         return Padding(
-          //           padding: EdgeInsets.only(right: 8),
-          //           child: FilterChip(
-          //             label: Text(
-          //               category.toUpperCase(),
-          //               style: GoogleFonts.poppins(
-          //                 color: selectedFilterCategory == category
-          //                     ? Colors.white
-          //                     : Colors.blue[600],
-          //                 fontWeight: FontWeight.w500,
-          //               ),
-          //             ),
-          //             selected: selectedFilterCategory == category,
-          //             onSelected: (selected) {
-          //               setState(() {
-          //                 selectedFilterCategory = selected ? category : null;
-          //               });
-          //             },
-          //             backgroundColor: Colors.white,
-          //             selectedColor: Colors.blue[600],
-          //             checkmarkColor: Colors.white,
-          //           ),
-          //         );
-          //       },
-          //     ),
-          //   ),
-
           // Products Grid
           Expanded(
             child: StreamBuilder(
-              stream: FirestoreServices().showProducts(),
+              stream: selectedFilterCategory == null
+                ? FirestoreServices().showProducts()
+                : FirestoreServices().getItemsByCategoryId(selectedFilterCategory!),
               builder: (context, snapshot) {
                 if (snapshot.hasData) {
                   List productList = snapshot.data!.docs;
@@ -412,14 +340,14 @@ class _HomePageState extends State<HomePage> {
                   // Filter products
                   productList = productList.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
-                    final name = data['product'].toString().toLowerCase();
-                    final category = data['category']?.toString().toLowerCase() ?? '';
-                    final quantity = data['quantity'] ?? 0;
+                    final name = (data['name'] ?? data['item'] ?? '').toString().toLowerCase();
+                    // final category = data['category']?.toString().toLowerCase() ?? '';
+                    final quantity = data['amount'] ?? 0;
                     
                     final matchesSearch = searchText.isEmpty || name.contains(searchText);
-                    final matchesCategory = selectedFilterCategory == null || 
-                        category == selectedFilterCategory!.toLowerCase();
-                    final hasStock = quantity > 0; // Only show items with stock
+                    final matchesCategory = selectedFilterCategory == null || name.contains(searchText);
+                        // category == selectedFilterCategory!.toLowerCase();
+                    final hasStock = quantity > 0;
                     
                     return matchesSearch && matchesCategory && hasStock;
                   }).toList();
@@ -461,7 +389,7 @@ class _HomePageState extends State<HomePage> {
                     padding: EdgeInsets.all(16),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
-                      childAspectRatio: 0.75,
+                      childAspectRatio: 0.65, 
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
                     ),
@@ -471,10 +399,10 @@ class _HomePageState extends State<HomePage> {
                       String docId = document.id;
                       Map<String, dynamic> data = document.data() as Map<String, dynamic>;
                       
-                      String product = data['product']?.toString() ?? 'No Name';
+                      String product = data['name']?.toString() ?? 'No Name';
                       String sku = data['sku']?.toString() ?? 'No SKU';
-                      String category = data['category']?.toString() ?? 'No category';
-                      int quantity = data['quantity'] ?? 0;
+                      String category = selectedFilterCategory ?? (document.reference.parent.parent?.id ?? 'Uncategorized');
+                      int quantity = data['amount'] ?? 0;
                       String imageUrl = data['imageUrl']?.toString() ?? '';
 
                       return Card(
@@ -487,7 +415,7 @@ class _HomePageState extends State<HomePage> {
                           children: [
                             // Product Image
                             Expanded(
-                              flex: 3,
+                              flex: 4, 
                               child: Container(
                                 width: double.infinity,
                                 decoration: BoxDecoration(
@@ -503,7 +431,7 @@ class _HomePageState extends State<HomePage> {
                                         ),
                                         child: Image.network(
                                           imageUrl,
-                                          height: 120,
+                                          height: 140, 
                                           width: double.infinity,
                                           fit: BoxFit.cover,
                                           loadingBuilder: (context, child, loadingProgress) {
@@ -539,7 +467,7 @@ class _HomePageState extends State<HomePage> {
                             
                             // Product Info
                             Expanded(
-                              flex: 3,
+                              flex: 4,
                               child: Padding(
                                 padding: EdgeInsets.all(12),
                                 child: Column(
@@ -548,23 +476,48 @@ class _HomePageState extends State<HomePage> {
                                     Text(
                                       product,
                                       style: GoogleFonts.poppins(
-                                        fontSize: 14,
+                                        fontSize: product.length > 18 ? 9 : 12, 
                                         fontWeight: FontWeight.w600,
                                         color: Colors.grey[800],
                                       ),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                     ),
-                                    SizedBox(height: 4),
-                                    Text(
-                                      'Tersedia: $quantity',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 12,
-                                        color: quantity > 0 ? Colors.green[600] : Colors.red[600],
-                                        fontWeight: FontWeight.w500,
+                                    SizedBox(height: product.length > 18 ? 7 : 4),
+                                    // Text(
+                                    //   'SKU: $sku',
+                                    //   style: GoogleFonts.poppins(
+                                    //     fontSize: 10,
+                                    //     fontWeight: FontWeight.w600,
+                                    //     color: Colors.grey[800],
+                                    //   ),
+                                    //   maxLines: 2,
+                                    //   overflow: TextOverflow.ellipsis,
+                                    // ),
+                                    // SizedBox(height: 4),
+
+                                    Container(
+                                      padding:  EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: quantity > 0 ? Colors.green[50] : Colors.red[50],
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: quantity > 0 ? Colors.green[200]! : Colors.red[200]!,
+                                          width: 0.5,
+                                        )
+                                      ),
+                                      child: Text(
+                                        'Tersedia: $quantity',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 10, 
+                                          color: quantity > 0 ? Colors.green[600] : Colors.red[600],
+                                          fontWeight: FontWeight.w500,
+                                        ),
                                       ),
                                     ),
-                                    SizedBox(height: 8),
+                                    SizedBox(height: product.length > 18 ? 10 : 8),
+
+                                    // Borrow Button
                                     SizedBox(
                                       width: double.infinity,
                                       child: ElevatedButton.icon(
@@ -584,16 +537,16 @@ class _HomePageState extends State<HomePage> {
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: Colors.blue[600],
                                           foregroundColor: Colors.white,
-                                          padding: EdgeInsets.symmetric(vertical: 8),
+                                          padding: EdgeInsets.symmetric(vertical: 6), 
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(12),
                                           ),
                                         ),
-                                        icon: Icon(Icons.shopping_bag_outlined, size: 16),
+                                        icon: Icon(Icons.shopping_bag_outlined, size: 14), 
                                         label: Text(
                                           'Pinjam',
                                           style: GoogleFonts.poppins(
-                                            fontSize: 12,
+                                            fontSize: 11, 
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),
@@ -623,4 +576,3 @@ class _HomePageState extends State<HomePage> {
     );
   }
 }
-
